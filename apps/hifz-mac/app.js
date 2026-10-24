@@ -1,16 +1,24 @@
-// Hifz — Mac UI. Data/logic lives in model.js and /shared/.
+// Hifz — Mac UI. Data/logic lives in model.js and /shared/; text and dates in i18n.js.
 import { createStore } from '../../shared/store.js';
-import { SURAHS, JUZ, TOTAL_AYAHS, surah, formatRange, juzSpan, ayahCount, toIndex, fromIndex, rangeIdx, matchSurahs, isValidPos } from '../../shared/quran.js';
+import { SURAHS, JUZ, TOTAL_AYAHS, surah, ayahCount, toIndex, fromIndex, rangeIdx, matchSurahs, isValidPos, normalizeName } from '../../shared/quran.js';
 import * as M from './model.js';
+import {
+  t, count, setLang, applyDocLang, isAr, lang,
+  ratingLabel, ratingName, typeLabel, typeShort, statusLabel, surahName, rangeLabel, juzLabel, surahOption,
+  weekdayName, weekdayShort, weekdayByIndex, fmtDate, fmtLongDate, fmtMonth, fmtMonthShort, fmtMonthTiny, fmtDateTime, hijri,
+  AR_WEEKDAYS, AR_RATINGS,
+} from './i18n.js';
 
 const store = createStore({ app: M.APP, schemaVersion: M.SCHEMA_VERSION, migrate: M.migrate, validate: M.validateItem });
+
+const freshHist = (extra = {}) => ({ q: '', type: 'all', ratings: new Set(), status: 'all', preset: 'past', from: '', to: '', limit: 200, ...extra });
 
 const S = {
   items: [],
   view: 'day',
   day: M.today(),
   planStart: M.today(),
-  hist: { q: '', type: 'all', ratings: new Set(), status: 'all', preset: 'past', from: '', to: '', limit: 200 },
+  hist: freshHist(),
   mapMode: 'surah',
   lastImport: null,
 };
@@ -20,7 +28,6 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 const view = $('#view');
 const dlg = $('#dlg');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const plural = (n, w) => `${n.toLocaleString()} ${w}${n === 1 ? '' : 's'}`;
 
 // ---------- data ----------
 
@@ -39,64 +46,63 @@ const sessionsOn = (date) => M.sortSessions(S.items.filter((i) => i.date === dat
 
 function relDay(d) {
   const n = M.dayDiff(M.today(), d);
-  if (n === 0) return 'Today';
-  if (n === 1) return 'Tomorrow';
-  if (n === -1) return 'Yesterday';
-  return n > 0 ? `In ${n} days` : `${-n} days ago`;
+  if (n === 0) return t('today');
+  if (n === 1) return t('tomorrow');
+  if (n === -1) return t('yesterday');
+  return n > 0 ? t('inN', { n: count(n, 'day') }) : t('nAgo', { n: count(-n, 'day') });
 }
 
 // ---------- shared bits ----------
 
 function ratingPill(v) {
   if (!v) return '';
-  const r = M.ratingInfo(v);
-  return `<span class="pill r${v}"><i></i>${r.label}</span>`;
+  return `<span class="pill r${v}"><i></i>${ratingLabel(v)}</span>`;
 }
 
 function statusBadge(item) {
   const s = M.status(item);
-  return `<span class="badge st-${s}">${M.STATUS_LABEL[s]}</span>`;
+  return `<span class="badge st-${s}">${statusLabel(s)}</span>`;
 }
 
 function typeBadge(type) {
-  return `<span class="type t-${type}">${type === 'memorize' ? 'Memorize' : 'Review'}</span>`;
+  return `<span class="type t-${type}">${typeShort(type)}</span>`;
 }
 
 function rangeText(item) {
   const ar = item.from.s === item.to.s ? surah(item.from.s).ar : `${surah(item.from.s).ar} – ${surah(item.to.s).ar}`;
-  return `<span class="range">${esc(formatRange(item.from, item.to))}</span> <span class="ar range-ar">${ar}</span>`;
+  return `<span class="range">${esc(rangeLabel(item.from, item.to))}</span> <span class="ar range-ar">${ar}</span>`;
 }
 
 function rateButtons(current, disabled) {
-  return `<div class="rate" role="group" aria-label="Rating">${M.RATINGS.map((r) =>
-    `<button type="button" class="rb r${r.v}" data-rate="${r.v}" aria-pressed="${current === r.v}" ${disabled ? 'disabled' : ''}><i></i>${r.label}</button>`).join('')}</div>`;
+  return `<div class="rate" role="group" aria-label="${t('rating')}">${M.RATINGS.map((r) =>
+    `<button type="button" class="rb r${r.v}" data-rate="${r.v}" aria-pressed="${current === r.v}" ${disabled ? 'disabled' : ''}><i></i>${ratingLabel(r.v)}</button>`).join('')}</div>`;
 }
 
 function toast(msg) {
-  const t = $('#toast');
-  t.textContent = msg;
-  t.classList.add('show');
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => t.classList.remove('show'), 2600);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 2600);
 }
 
 // ---------- range picker ----------
 
-const surahOptions = (sel) => SURAHS.map((s) => `<option value="${s.n}" ${s.n === sel ? 'selected' : ''}>${s.n}. ${esc(s.name)} — ${s.ar} (${s.ayahs})</option>`).join('');
+const surahOptions = (sel) => SURAHS.map((s) => `<option value="${s.n}" ${s.n === sel ? 'selected' : ''}>${esc(surahOption(s))}</option>`).join('');
 
 function rangePickerHTML(from, to) {
   return `<div class="rp" data-rp>
-    <div class="rp-row"><span class="lbl">From</span>
-      <select data-s="from" aria-label="From surah">${surahOptions(from.s)}</select>
-      <span class="lbl-sm">ayah</span><input type="number" data-a="from" min="1" max="${surah(from.s).ayahs}" value="${from.a}" aria-label="From ayah">
+    <div class="rp-row"><span class="lbl">${t('from')}</span>
+      <select data-s="from" aria-label="${t('fromSurah')}">${surahOptions(from.s)}</select>
+      <span class="lbl-sm">${t('ayah')}</span><input type="number" data-a="from" min="1" max="${surah(from.s).ayahs}" value="${from.a}" aria-label="${t('fromAyah')}">
     </div>
-    <div class="rp-row"><span class="lbl">To</span>
-      <select data-s="to" aria-label="To surah">${surahOptions(to.s)}</select>
-      <span class="lbl-sm">ayah</span><input type="number" data-a="to" min="1" max="${surah(to.s).ayahs}" value="${to.a}" aria-label="To ayah">
+    <div class="rp-row"><span class="lbl">${t('to')}</span>
+      <select data-s="to" aria-label="${t('toSurah')}">${surahOptions(to.s)}</select>
+      <span class="lbl-sm">${t('ayah')}</span><input type="number" data-a="to" min="1" max="${surah(to.s).ayahs}" value="${to.a}" aria-label="${t('toAyah')}">
     </div>
     <div class="rp-quick">
-      <button type="button" data-whole>Whole surah</button>
-      <select data-juz aria-label="Pick a juz"><option value="">Whole juz…</option>${JUZ.map((j) => `<option value="${j.n}">Juz ${j.n}</option>`).join('')}</select>
+      <button type="button" data-whole>${t('wholeSurah')}</button>
+      <select data-juz aria-label="${t('wholeJuz')}"><option value="">${t('wholeJuz')}</option>${JUZ.map((j) => `<option value="${j.n}">${t('juzN', { n: j.n })}</option>`).join('')}</select>
       <span class="rp-sum" data-sum></span>
     </div>
   </div>`;
@@ -119,10 +125,10 @@ function bindRangePicker(root, onChange = () => {}) {
     const sum = $('[data-sum]', el);
     if (!v) {
       const from = read('from'), to = read('to');
-      sum.textContent = isValidPos(from) && isValidPos(to) ? '“To” must come after “From”' : 'Check the ayah numbers';
+      sum.textContent = isValidPos(from) && isValidPos(to) ? t('errOrder') : t('errAyah');
       sum.classList.add('err');
     } else {
-      sum.textContent = `${plural(ayahCount(v.from, v.to), 'ayah')} · ${juzSpan(v.from, v.to)}`;
+      sum.textContent = `${count(ayahCount(v.from, v.to), 'ayah')} · ${juzLabel(v.from, v.to)}`;
       sum.classList.remove('err');
     }
     onChange(v);
@@ -173,20 +179,20 @@ function openEditor(item) {
   const it = { note: '', rating: null, ...item };
   if (!it.from) Object.assign(it, defaultRange(it.type, it.date));
   dlg.innerHTML = `<form class="editor" method="dialog">
-    <h2>${isNew ? 'New session' : 'Edit session'}</h2>
+    <h2>${isNew ? t('newSession') : t('editSession')}</h2>
     <div class="seg" data-type>
-      <button type="button" data-v="memorize" aria-pressed="${it.type === 'memorize'}">Memorization</button>
-      <button type="button" data-v="review" aria-pressed="${it.type === 'review'}">Review</button>
+      <button type="button" data-v="memorize" aria-pressed="${it.type === 'memorize'}">${typeLabel('memorize')}</button>
+      <button type="button" data-v="review" aria-pressed="${it.type === 'review'}">${typeLabel('review')}</button>
     </div>
-    <label class="field"><span>Date</span><span class="date-wrap"><input type="date" name="date" value="${it.date}" required> <b class="wd"></b></span></label>
-    <div class="field"><span>Range</span>${rangePickerHTML(it.from, it.to)}</div>
-    <div class="field"><span>Rating</span><div>${rateButtons(it.rating)}<div class="hint" data-rate-hint></div></div></div>
-    <label class="field"><span>Note</span><textarea name="note" rows="2" placeholder="Optional — mistakes, mutashabihat, how it felt…">${esc(it.note)}</textarea></label>
+    <label class="field"><span>${t('date')}</span><span class="date-wrap"><input type="date" name="date" value="${it.date}" required> <b class="wd"></b></span></label>
+    <div class="field"><span>${t('range')}</span>${rangePickerHTML(it.from, it.to)}</div>
+    <div class="field"><span>${t('rating')}</span><div>${rateButtons(it.rating)}<div class="hint" data-rate-hint></div></div></div>
+    <label class="field"><span>${t('note')}</span><textarea name="note" rows="2" placeholder="${t('notePh')}">${esc(it.note)}</textarea></label>
     <footer>
-      ${isNew ? '' : '<button type="button" class="danger" data-del>Delete</button>'}
+      ${isNew ? '' : `<button type="button" class="danger" data-del>${t('del')}</button>`}
       <span class="spacer"></span>
-      <button type="button" data-cancel>Cancel</button>
-      <button type="submit" class="primary" data-save>Save</button>
+      <button type="button" data-cancel>${t('cancel')}</button>
+      <button type="submit" class="primary" data-save>${isNew ? t('addBtn') : t('save')}</button>
     </footer>
   </form>`;
   const form = $('form', dlg);
@@ -196,11 +202,11 @@ function openEditor(item) {
 
   const syncDate = () => {
     const d = form.date.value;
-    $('.wd', form).textContent = d ? `${M.weekday(d)} · ${relDay(d)}` : '';
+    $('.wd', form).textContent = d ? `${weekdayName(d)} · ${relDay(d)}` : '';
     const future = d > M.today();
     $$('[data-rate]', form).forEach((b) => { b.disabled = future; });
     if (future) { rating = null; syncRate(); }
-    $('[data-rate-hint]', form).textContent = future ? 'Future day — this is a plan. Rate it on the day.' : 'Leave empty if not done yet. Click again to clear.';
+    $('[data-rate-hint]', form).textContent = future ? t('futureHint') : t('rateHint');
   };
   const syncRate = () => $$('[data-rate]', form).forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.rate) === rating)));
 
@@ -217,10 +223,10 @@ function openEditor(item) {
   form.date.addEventListener('input', syncDate);
   $('[data-cancel]', form).addEventListener('click', () => dlg.close());
   $('[data-del]', form)?.addEventListener('click', async () => {
-    if (!confirm('Delete this session?')) return;
+    if (!confirm(t('confirmDelete'))) return;
     await store.remove(it.id);
     dlg.close();
-    toast('Session deleted');
+    toast(t('sessionDeleted'));
     await reload();
   });
   form.addEventListener('submit', async (e) => {
@@ -234,7 +240,7 @@ function openEditor(item) {
       planned: isNew ? date > M.today() || (!rating && date >= M.today()) : it.planned,
     });
     dlg.close();
-    toast(isNew ? 'Session added' : 'Saved');
+    toast(isNew ? t('sessionAdded') : t('saved'));
   });
   syncDate();
   dlg.showModal();
@@ -249,10 +255,10 @@ function sessionCard(it) {
       <div class="sc-range">${rangeText(it)}</div>
       ${statusBadge(it)}
     </div>
-    <div class="sc-meta">${plural(M.sizeOf(it), 'ayah')} · ${juzSpan(it.from, it.to)}${it.planned ? ' · planned ahead' : ''}</div>
+    <div class="sc-meta">${count(M.sizeOf(it), 'ayah')} · ${juzLabel(it.from, it.to)}${it.planned ? ` · ${t('plannedAhead')}` : ''}</div>
     ${rateButtons(it.rating, future)}
     ${it.note ? `<p class="sc-note">${esc(it.note)}</p>` : ''}
-    <div class="sc-actions"><button class="ghost" data-edit>Edit</button></div>
+    <div class="sc-actions"><button class="ghost" data-edit>${t('edit')}</button></div>
   </article>`;
 }
 
@@ -261,31 +267,33 @@ function renderDay() {
   const list = sessionsOn(d);
   const week0 = M.addDays(d, -M.weekdayIndex(d));
   const week = Array.from({ length: 7 }, (_, k) => M.addDays(week0, k));
+  const future = d > M.today();
   const col = (type) => {
     const xs = list.filter((i) => i.type === type);
+    const empty = t(`empty${type === 'memorize' ? 'Mem' : 'Rev'}${future ? 'Planned' : 'Logged'}`);
     return `<section class="day-col">
-      <header><h3>${M.TYPES[type]}</h3><button data-add="${type}">+ Add</button></header>
-      ${xs.length ? xs.map(sessionCard).join('') : `<div class="empty">No ${type === 'memorize' ? 'memorization' : 'review'} ${d > M.today() ? 'planned' : 'logged'} for this day.</div>`}
+      <header><h3>${typeLabel(type)}</h3><button data-add="${type}">${t('add')}</button></header>
+      ${xs.length ? xs.map(sessionCard).join('') : `<div class="empty">${empty}</div>`}
     </section>`;
   };
   view.innerHTML = `
     <header class="day-head">
       <div>
-        <div class="day-wd">${M.weekday(d)}</div>
-        <div class="day-date">${M.formatLongDate(d)} <span class="muted">· ${esc(M.hijri(d))}</span></div>
+        <div class="day-wd">${weekdayName(d)}</div>
+        <div class="day-date">${fmtLongDate(d)} <span class="muted">· ${esc(hijri(d))}</span></div>
         <div class="day-rel">${relDay(d)}</div>
       </div>
       <div class="day-nav">
-        <button data-nav="-1" aria-label="Previous day">‹</button>
-        <button data-nav="0" ${d === M.today() ? 'disabled' : ''}>Today</button>
-        <button data-nav="1" aria-label="Next day">›</button>
-        <input type="date" data-pick value="${d}" aria-label="Go to date">
+        <button data-nav="-1" aria-label="${t('prevDay')}">‹</button>
+        <button data-nav="0" ${d === M.today() ? 'disabled' : ''}>${t('today')}</button>
+        <button data-nav="1" aria-label="${t('nextDay')}">›</button>
+        <input type="date" data-pick value="${d}" aria-label="${t('goToDate')}">
       </div>
     </header>
     <div class="week-strip">${week.map((w) => {
       const xs = sessionsOn(w);
       return `<button class="ws-day ${w === d ? 'sel' : ''} ${w === M.today() ? 'is-today' : ''}" data-go="${w}">
-        <span class="ws-wd">${M.weekday(w).slice(0, 3)}</span><span class="ws-n">${M.parseDate(w).getDate()}</span>
+        <span class="ws-wd">${weekdayShort(w)}</span><span class="ws-n">${M.parseDate(w).getDate()}</span>
         <span class="ws-dots">${xs.map((x) => `<i class="dot ${x.rating ? `r${x.rating}` : `st-${M.status(x)}`}"></i>`).join('')}</span>
       </button>`;
     }).join('')}</div>
@@ -323,36 +331,36 @@ function renderPlan() {
   const mem = inWin.filter((i) => i.type === 'memorize');
   const memAyahs = mem.reduce((n, i) => n + M.sizeOf(i), 0);
   const lastMem = M.sortSessions(mem).pop();
-  const chip = (it) => `<button class="chip t-${it.type} ${it.rating ? `rated r${it.rating}` : ''}" data-id="${it.id}" title="${esc(M.TYPES[it.type])} · ${plural(M.sizeOf(it), 'ayah')}">
-      ${it.rating ? '<i></i>' : ''}${esc(formatRange(it.from, it.to))}<span class="chip-n">${M.sizeOf(it)}</span></button>`;
+  const chip = (it) => `<button class="chip t-${it.type} ${it.rating ? `rated r${it.rating}` : ''}" data-id="${it.id}" title="${esc(typeLabel(it.type))} · ${count(M.sizeOf(it), 'ayah')}">
+      ${it.rating ? '<i></i>' : ''}${esc(rangeLabel(it.from, it.to))}<span class="chip-n">${M.sizeOf(it)}</span></button>`;
 
   view.innerHTML = `
     <header class="page-head">
-      <div><h1>Plan</h1><p class="muted">Optional. Plan any days you like — one day, a week, or the whole month.</p></div>
+      <div><h1>${t('nav.plan')}</h1><p class="muted">${t('planSub')}</p></div>
       <div class="toolbar">
-        <button data-shift="-30" aria-label="Previous 30 days">‹</button>
-        <input type="date" data-start value="${start}" aria-label="Plan start date">
-        <button data-shift="30" aria-label="Next 30 days">›</button>
-        <button data-shift="0" ${start === M.today() ? 'disabled' : ''}>From today</button>
-        <button class="primary" data-auto>Auto-plan…</button>
-        <button data-clear>Clear plans…</button>
+        <button data-shift="-30" aria-label="${t('prev30')}">‹</button>
+        <input type="date" data-start value="${start}" aria-label="${t('planStart')}">
+        <button data-shift="30" aria-label="${t('next30')}">›</button>
+        <button data-shift="0" ${start === M.today() ? 'disabled' : ''}>${t('fromToday')}</button>
+        <button class="primary" data-auto>${t('autoPlan')}</button>
+        <button data-clear>${t('clearPlans')}</button>
       </div>
     </header>
     <div class="plan-summary">
-      <div><b>${new Set(inWin.map((i) => i.date)).size}</b> of 30 days have something</div>
-      <div><b>${plural(memAyahs, 'ayah')}</b> to memorize${lastMem ? ` · reaching <b>${esc(formatRange(lastMem.to, lastMem.to))}</b>` : ''}</div>
-      <div><b>${inWin.filter((i) => i.type === 'review').length}</b> review sessions</div>
-      <div class="muted">${M.formatDate(start)} → ${M.formatDate(end)}</div>
+      <div>${t('daysHave', { n: new Set(inWin.map((i) => i.date)).size })}</div>
+      <div>${t('toMemorize', { n: count(memAyahs, 'ayah') })}${lastMem ? ` · ${t('reaching', { x: esc(rangeLabel(lastMem.to, lastMem.to)) })}` : ''}</div>
+      <div>${t('reviewCount', { n: count(inWin.filter((i) => i.type === 'review').length, 'session') })}</div>
+      <div class="muted">${fmtDate(start)} ${t('arrow')} ${fmtDate(end)}</div>
     </div>
     <div class="plan-table" role="table">
-      <div class="pt-row pt-head" role="row"><div>Day</div><div>Memorization</div><div>Review</div></div>
+      <div class="pt-row pt-head" role="row"><div>${t('colDay')}</div><div>${typeLabel('memorize')}</div><div>${typeLabel('review')}</div></div>
       ${days.map((d) => {
         const xs = sessionsOn(d);
         const wd = M.weekdayIndex(d);
         return `<div class="pt-row ${d === M.today() ? 'is-today' : ''} ${wd === 5 ? 'fri' : ''} ${wd === 0 && d !== start ? 'week-start' : ''}" role="row">
-          <button class="pt-day" data-open="${d}" title="Open this day"><b>${M.weekday(d)}</b><span>${M.formatDate(d, { year: false })}</span></button>
+          <button class="pt-day" data-open="${d}" title="${t('openDay')}"><b>${weekdayName(d)}</b><span>${fmtDate(d, { year: false })}</span></button>
           ${['memorize', 'review'].map((type) => `<div class="pt-cell">${xs.filter((i) => i.type === type).map(chip).join('')}
-            <button class="add-chip" data-add="${type}" data-date="${d}" aria-label="Add ${M.TYPES[type]} on ${M.weekday(d)}">+</button></div>`).join('')}
+            <button class="add-chip" data-add="${type}" data-date="${d}" aria-label="${esc(t('addOn', { type: typeLabel(type), day: weekdayName(d) }))}">+</button></div>`).join('')}
         </div>`;
       }).join('')}
     </div>`;
@@ -370,7 +378,7 @@ function renderPlan() {
   $('[data-clear]', view).addEventListener('click', openClearPlans);
 }
 
-const WD_BOXES = (sel) => M.WEEKDAYS.map((w, k) => `<label class="wd-box"><input type="checkbox" name="wd" value="${k}" ${sel.includes(k) ? 'checked' : ''}>${w.slice(0, 3)}</label>`).join('');
+const WD_BOXES = (sel) => M.WEEKDAYS.map((_, k) => `<label class="wd-box"><input type="checkbox" name="wd" value="${k}" ${sel.includes(k) ? 'checked' : ''}>${weekdayByIndex(k, true)}</label>`).join('');
 
 function openAutoPlan() {
   const start = S.planStart < M.today() ? M.today() : S.planStart;
@@ -384,42 +392,42 @@ function openAutoPlan() {
   const revTo = lastKnown >= 0 ? fromIndex(lastKnown) : { s: 114, a: 6 };
 
   dlg.innerHTML = `<form class="editor wide" method="dialog">
-    <h2>Auto-plan</h2>
+    <h2>${t('autoTitle')}</h2>
     <div class="ap-grid">
       <div>
         <div class="seg" data-type>
-          <button type="button" data-v="memorize" aria-pressed="true">Memorization</button>
-          <button type="button" data-v="review" aria-pressed="false">Review</button>
+          <button type="button" data-v="memorize" aria-pressed="true">${typeLabel('memorize')}</button>
+          <button type="button" data-v="review" aria-pressed="false">${typeLabel('review')}</button>
         </div>
-        <div class="field"><span>Start</span><span class="date-wrap"><input type="date" name="start" value="${start}"> <b class="wd"></b></span></div>
-        <label class="field"><span>Days</span><span><input type="number" name="days" min="1" max="30" value="30"> <span class="muted">days (max 30)</span></span></label>
-        <div class="field"><span>On</span><div class="wd-boxes">${WD_BOXES([0, 1, 2, 3, 4, 5, 6])}</div></div>
-        <label class="check"><input type="checkbox" name="skip" checked> Skip days that already have a session of this type</label>
+        <div class="field"><span>${t('start')}</span><span class="date-wrap"><input type="date" name="start" value="${start}"> <b class="wd"></b></span></div>
+        <label class="field"><span>${t('days')}</span><span><input type="number" name="days" min="1" max="30" value="30"> <span class="muted">${t('daysMax')}</span></span></label>
+        <div class="field"><span>${t('on')}</span><div class="wd-boxes">${WD_BOXES([0, 1, 2, 3, 4, 5, 6])}</div></div>
+        <label class="check"><input type="checkbox" name="skip" checked> ${t('skip')}</label>
 
         <div data-for="memorize">
-          <div class="field"><span>Start at</span><span class="pos">
-            <select name="ms" aria-label="Start surah">${surahOptions(memStart.s)}</select>
-            <span class="lbl-sm">ayah</span><input type="number" name="ma" min="1" value="${memStart.a}" aria-label="Start ayah"></span></div>
-          <label class="field"><span>Per day</span><span><input type="number" name="per" min="1" max="300" value="5"> ayahs</span></label>
-          <label class="field"><span>Order</span><select name="order">
-            <option value="forward">Forward — Al-Fatihah → An-Nas</option>
-            <option value="backward">Backward by surah — An-Nas → Al-Baqarah</option>
+          <div class="field"><span>${t('startAt')}</span><span class="pos">
+            <select name="ms" aria-label="${t('startSurah')}">${surahOptions(memStart.s)}</select>
+            <span class="lbl-sm">${t('ayah')}</span><input type="number" name="ma" min="1" value="${memStart.a}" aria-label="${t('startAyah')}"></span></div>
+          <label class="field"><span>${t('perDay')}</span><span><input type="number" name="per" min="1" max="300" value="5"> ${t('ayahsUnit')}</span></label>
+          <label class="field"><span>${t('order')}</span><select name="order">
+            <option value="forward">${t('forward')}</option>
+            <option value="backward">${t('backward')}</option>
           </select></label>
         </div>
 
         <div data-for="review" hidden>
-          <div class="field"><span>Cycle over</span>${rangePickerHTML(revFrom, revTo)}</div>
-          <div class="field"><span>Per day</span><span><input type="number" name="rper" min="1" max="300" value="1">
-            <select name="unit"><option value="juz">juz</option><option value="surah">surahs</option><option value="ayahs">ayahs</option></select></span></div>
-          <p class="hint">Reviews rotate through the range and start over when they reach the end.</p>
+          <div class="field"><span>${t('cycleOver')}</span>${rangePickerHTML(revFrom, revTo)}</div>
+          <div class="field"><span>${t('perDay')}</span><span><input type="number" name="rper" min="1" max="300" value="1">
+            <select name="unit"><option value="juz">${t('unitJuz')}</option><option value="surah">${t('unitSurah')}</option><option value="ayahs">${t('unitAyahs')}</option></select></span></div>
+          <p class="hint">${t('reviewHint')}</p>
         </div>
       </div>
       <div class="ap-preview">
-        <h3>Preview <span class="muted" data-count></span></h3>
+        <h3>${t('preview')} <span class="muted" data-count></span></h3>
         <ol data-preview></ol>
       </div>
     </div>
-    <footer><span class="spacer"></span><button type="button" data-cancel>Cancel</button><button type="submit" class="primary" data-go>Add to plan</button></footer>
+    <footer><span class="spacer"></span><button type="button" data-cancel>${t('cancel')}</button><button type="submit" class="primary" data-go>${t('addToPlan')}</button></footer>
   </form>`;
   const form = $('form', dlg);
   let type = 'memorize';
@@ -447,11 +455,11 @@ function openAutoPlan() {
   function preview() {
     if (!form) return;
     const d = form.start.value;
-    $('.wd', form).textContent = d ? M.weekday(d) : '';
+    $('.wd', form).textContent = d ? weekdayName(d) : '';
     plan = compute();
-    $('[data-count]', form).textContent = plural(plan.length, 'session');
-    $('[data-preview]', form).innerHTML = plan.map((p) => `<li><span class="pv-day"><b>${M.weekday(p.date).slice(0, 3)}</b> ${M.formatDate(p.date, { year: false })}</span>
-      <span>${esc(formatRange(p.from, p.to))}</span><span class="muted num">${ayahCount(p.from, p.to)}</span></li>`).join('') || '<li class="muted">Nothing to add with these settings.</li>';
+    $('[data-count]', form).textContent = count(plan.length, 'session');
+    $('[data-preview]', form).innerHTML = plan.map((p) => `<li><span class="pv-day"><b>${weekdayShort(p.date)}</b> ${fmtDate(p.date, { year: false })}</span>
+      <span>${esc(rangeLabel(p.from, p.to))}</span><span class="muted num">${ayahCount(p.from, p.to)}</span></li>`).join('') || `<li class="muted">${t('nothingToAdd')}</li>`;
     $('[data-go]', form).disabled = !plan.length;
   }
   $$('[data-type] button', form).forEach((b) => b.addEventListener('click', () => {
@@ -469,7 +477,7 @@ function openAutoPlan() {
     if (!plan.length) return;
     await store.putMany(plan.map((p) => ({ type, date: p.date, from: p.from, to: p.to, rating: null, note: '', planned: true })));
     dlg.close();
-    toast(`Added ${plural(plan.length, 'planned session')}`);
+    toast(t('addedN', { n: count(plan.length, 'session') }));
     await reload();
   });
   preview();
@@ -479,17 +487,17 @@ function openAutoPlan() {
 function openClearPlans() {
   const start = S.planStart < M.today() ? M.today() : S.planStart;
   dlg.innerHTML = `<form class="editor" method="dialog">
-    <h2>Clear plans</h2>
-    <p class="muted">Removes sessions that are not rated yet. Rated sessions are never touched.</p>
-    <label class="field"><span>From</span><input type="date" name="from" value="${start}"></label>
-    <label class="field"><span>To</span><input type="date" name="to" value="${M.addDays(start, 29)}"></label>
-    <label class="field"><span>Type</span><select name="type"><option value="all">Memorization and review</option><option value="memorize">Memorization only</option><option value="review">Review only</option></select></label>
+    <h2>${t('clearTitle')}</h2>
+    <p class="muted">${t('clearSub')}</p>
+    <label class="field"><span>${t('from')}</span><input type="date" name="from" value="${start}"></label>
+    <label class="field"><span>${t('to')}</span><input type="date" name="to" value="${M.addDays(start, 29)}"></label>
+    <label class="field"><span>${t('type')}</span><select name="type"><option value="all">${t('bothTypes')}</option><option value="memorize">${t('memOnly')}</option><option value="review">${t('revOnly')}</option></select></label>
     <p data-count></p>
-    <footer><span class="spacer"></span><button type="button" data-cancel>Cancel</button><button type="submit" class="primary danger-fill">Clear</button></footer>
+    <footer><span class="spacer"></span><button type="button" data-cancel>${t('cancel')}</button><button type="submit" class="primary danger-fill">${t('clear')}</button></footer>
   </form>`;
   const form = $('form', dlg);
   const pick = () => S.items.filter((i) => !i.rating && i.date >= form.from.value && i.date <= form.to.value && (form.type.value === 'all' || i.type === form.type.value));
-  const upd = () => { $('[data-count]', form).textContent = `${plural(pick().length, 'unrated session')} will be removed.`; };
+  const upd = () => { $('[data-count]', form).textContent = t('willRemove', { n: count(pick().length, 'session') }); };
   form.addEventListener('input', upd);
   $('[data-cancel]', form).addEventListener('click', () => dlg.close());
   form.addEventListener('submit', async (e) => {
@@ -497,7 +505,7 @@ function openClearPlans() {
     const ids = pick().map((i) => i.id);
     await store.removeMany(ids);
     dlg.close();
-    toast(`Removed ${plural(ids.length, 'session')}`);
+    toast(t('removedN', { n: count(ids.length, 'session') }));
     await reload();
   });
   upd();
@@ -506,9 +514,20 @@ function openClearPlans() {
 
 // ---------- History view ----------
 
-/** Search: "2:255", "18" (surah), "juz 30", surah names (Latin/Arabic), weekdays, ratings, note text. */
+const AR_WD_KEYS = AR_WEEKDAYS.map(normalizeName);
+const AR_RATING_KEYS = Object.fromEntries(Object.entries(AR_RATINGS).map(([k, v]) => [normalizeName(k), v]));
+
+/**
+ * Search: "2:255", "2:1-20", "18" (surah), "juz 30" / "جزء 30", surah names (Latin/Arabic),
+ * weekdays and ratings (English/Arabic), note text. Tokens are ANDed.
+ */
 function matcher(q) {
-  const raw = q.trim().toLowerCase().replace(/juz\s+(\d+)/g, 'juz$1').replace(/very\s+good/g, 'verygood').replace(/not\s+done/g, 'notdone');
+  const raw = q.trim().toLowerCase()
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/(?:juz|(?:ال)?جزء)\s*(\d+)/g, 'juz$1')
+    .replace(/very\s+good|جيد\s+جد[اًا]+/g, 'verygood')
+    .replace(/not\s+done|لم\s+يتم/g, 'notdone')
+    .replace(/سور[ةه]\s+/g, 'surah:');
   if (!raw) return () => true;
   const tests = raw.split(/\s+/).map((tok) => {
     let m;
@@ -532,29 +551,36 @@ function matcher(q) {
       const j = JUZ[Number(m[1]) - 1];
       return (it) => M.overlaps(it, j.start, j.end);
     }
+    const surahOnly = tok.startsWith('surah:');
+    const word = surahOnly ? tok.slice(6) : tok;
+    const surahs = matchSurahs(word).map(surah);
+    const bySurah = (it) => surahs.some((s) => M.overlaps(it, s.offset, s.offset + s.ayahs - 1));
+    if (surahOnly) return bySurah;
+    // An exact Arabic weekday (e.g. الجمعة) means the day; use "سورة الجمعة" for the surah.
+    const arWd = AR_WD_KEYS.indexOf(normalizeName(word));
+    if (arWd >= 0) return (it) => M.weekdayIndex(it.date) === arWd;
     const wd = tok.length >= 3 ? M.WEEKDAYS.findIndex((w) => w.toLowerCase().startsWith(tok)) : -1;
-    const rating = M.RATINGS.find((r) => r.key === tok);
-    const surahs = matchSurahs(tok).map(surah);
+    const rating = M.RATINGS.find((r) => r.key === tok)?.v || AR_RATING_KEYS[normalizeName(tok)];
     return (it) =>
       (wd >= 0 && M.weekdayIndex(it.date) === wd) ||
-      (rating && it.rating === rating.v) ||
+      (rating && it.rating === rating) ||
       (tok === 'notdone' && M.status(it) === 'missed') ||
-      surahs.some((s) => M.overlaps(it, s.offset, s.offset + s.ayahs - 1)) ||
+      bySurah(it) ||
       (it.note || '').toLowerCase().includes(tok) ||
       it.date.includes(tok);
   });
-  return (it) => tests.every((t) => t(it));
+  return (it) => tests.every((fn) => fn(it));
 }
 
 function presetRange(p) {
-  const t = M.today();
+  const td = M.today();
   switch (p) {
-    case '7': return [M.addDays(t, -6), t];
-    case '30': return [M.addDays(t, -29), t];
-    case '90': return [M.addDays(t, -89), t];
-    case 'month': return [`${t.slice(0, 7)}-01`, t];
-    case 'past': return ['', t];
-    case 'future': return [M.addDays(t, 1), ''];
+    case '7': return [M.addDays(td, -6), td];
+    case '30': return [M.addDays(td, -29), td];
+    case '90': return [M.addDays(td, -89), td];
+    case 'month': return [`${td.slice(0, 7)}-01`, td];
+    case 'past': return ['', td];
+    case 'future': return [M.addDays(td, 1), ''];
     default: return ['', ''];
   }
 }
@@ -575,31 +601,31 @@ function renderHistory() {
   const H = S.hist;
   view.innerHTML = `
     <header class="page-head">
-      <div><h1>History</h1></div>
+      <div><h1>${t('nav.history')}</h1></div>
     </header>
     <div class="filters">
-      <input type="search" data-q value="${esc(H.q)}" placeholder="Search: Al-Kahf · 2:255 · 18 · juz 30 · friday · poor · a note · البقرة" aria-label="Search history">
+      <input type="search" data-q value="${esc(H.q)}" placeholder="${t('searchPh')}" aria-label="${t('searchAria')}">
       <div class="seg small" data-ftype>
-        ${[['all', 'All'], ['memorize', 'Memorization'], ['review', 'Review']].map(([v, l]) => `<button data-v="${v}" aria-pressed="${H.type === v}">${l}</button>`).join('')}
+        ${[['all', t('all')], ['memorize', typeLabel('memorize')], ['review', typeLabel('review')]].map(([v, l]) => `<button data-v="${v}" aria-pressed="${H.type === v}">${l}</button>`).join('')}
       </div>
       <div class="rate-filter" data-frating>
-        ${M.RATINGS.map((r) => `<button class="rb r${r.v}" data-v="${r.v}" aria-pressed="${H.ratings.has(r.v)}"><i></i>${r.label}</button>`).join('')}
-        <button class="rb" data-v="0" aria-pressed="${H.ratings.has(0)}">Not rated</button>
+        ${M.RATINGS.map((r) => `<button class="rb r${r.v}" data-v="${r.v}" aria-pressed="${H.ratings.has(r.v)}"><i></i>${ratingLabel(r.v)}</button>`).join('')}
+        <button class="rb" data-v="0" aria-pressed="${H.ratings.has(0)}">${t('notRated')}</button>
       </div>
-      <select data-fstatus aria-label="Status">
-        ${[['all', 'Any status'], ['done', 'Done'], ['planned', 'Planned / to do'], ['missed', 'Not done (past)']].map(([v, l]) => `<option value="${v}" ${H.status === v ? 'selected' : ''}>${l}</option>`).join('')}
+      <select data-fstatus aria-label="${t('status')}">
+        ${[['all', t('anyStatus')], ['done', t('fDone')], ['planned', t('fPlanned')], ['missed', t('fMissed')]].map(([v, l]) => `<option value="${v}" ${H.status === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
-      <select data-fpreset aria-label="Date range">
-        ${[['all', 'All dates'], ['past', 'Up to today'], ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['month', 'This month'], ['future', 'Upcoming'], ['custom', 'Custom range…']].map(([v, l]) => `<option value="${v}" ${H.preset === v ? 'selected' : ''}>${l}</option>`).join('')}
+      <select data-fpreset aria-label="${t('dateRange')}">
+        ${[['all', t('allDates')], ['past', t('upToToday')], ['7', t('last7')], ['30', t('last30')], ['90', t('last90')], ['month', t('thisMonth')], ['future', t('upcoming')], ['custom', t('custom')]].map(([v, l]) => `<option value="${v}" ${H.preset === v ? 'selected' : ''}>${l}</option>`).join('')}
       </select>
       <span class="custom-range ${H.preset === 'custom' ? '' : 'hidden'}">
-        <input type="date" data-ffrom value="${H.from}" aria-label="From date"> – <input type="date" data-fto value="${H.to}" aria-label="To date">
+        <input type="date" data-ffrom value="${H.from}" aria-label="${t('fromDate')}"> – <input type="date" data-fto value="${H.to}" aria-label="${t('toDate')}">
       </span>
-      <button class="ghost" data-reset>Reset</button>
+      <button class="ghost" data-reset>${t('reset')}</button>
     </div>
     <div class="hist-layout">
       <div class="hist-list" data-list></div>
-      <nav class="month-index" data-months aria-label="Jump to month"></nav>
+      <nav class="month-index" data-months aria-label="${t('jumpMonth')}"></nav>
     </div>`;
 
   const q = $('[data-q]', view);
@@ -614,10 +640,7 @@ function renderHistory() {
   $('[data-fpreset]', view).addEventListener('change', (e) => { H.preset = e.target.value; renderHistory(); });
   $('[data-ffrom]', view).addEventListener('change', (e) => { H.from = e.target.value; renderHistoryList(); });
   $('[data-fto]', view).addEventListener('change', (e) => { H.to = e.target.value; renderHistoryList(); });
-  $('[data-reset]', view).addEventListener('click', () => {
-    S.hist = { q: '', type: 'all', ratings: new Set(), status: 'all', preset: 'past', from: '', to: '', limit: 200 };
-    renderHistory();
-  });
+  $('[data-reset]', view).addEventListener('click', () => { S.hist = freshHist(); renderHistory(); });
   renderHistoryList();
 }
 
@@ -629,9 +652,9 @@ function renderHistoryList() {
   const days = [...new Set(all.map((i) => i.date))];
   const ayahs = all.reduce((n, i) => n + M.sizeOf(i), 0);
 
-  let html = `<div class="hist-sum">${plural(all.length, 'session')} on ${plural(days.length, 'day')} · ${plural(ayahs, 'ayah')}</div>`;
-  if (!S.items.length) html += `<div class="empty big">No sessions yet. Start from the <a href="#day">Day</a> view or <a href="#plan">plan ahead</a>.</div>`;
-  else if (!all.length) html += `<div class="empty big">No sessions match these filters.</div>`;
+  let html = `<div class="hist-sum">${t('histSum', { s: count(all.length, 'session'), d: count(days.length, 'day'), a: count(ayahs, 'ayah') })}</div>`;
+  if (!S.items.length) html += `<div class="empty big">${t('noSessions')}</div>`;
+  else if (!all.length) html += `<div class="empty big">${t('noMatch')}</div>`;
   let month = null, day = null;
   for (const it of shown) {
     const ym = it.date.slice(0, 7);
@@ -639,13 +662,13 @@ function renderHistoryList() {
       if (day) html += '</div>';
       day = null;
       month = ym;
-      html += `<h2 class="month-h" id="m-${ym}">${M.formatMonth(ym)}</h2>`;
+      html += `<h2 class="month-h" id="m-${ym}">${fmtMonth(ym)}</h2>`;
     }
     if (it.date !== day) {
       if (day) html += '</div>';
       day = it.date;
-      html += `<div class="hist-day ${day === M.today() ? 'is-today' : ''}"><button class="hd-date" data-open="${day}" title="Open this day">
-        <b>${M.weekday(day)}</b><span>${M.formatDate(day)}</span><span class="muted">${relDay(day)}</span></button>`;
+      html += `<div class="hist-day ${day === M.today() ? 'is-today' : ''}"><button class="hd-date" data-open="${day}" title="${t('openDay')}">
+        <b>${weekdayName(day)}</b><span>${fmtDate(day)}</span><span class="muted">${relDay(day)}</span></button>`;
     }
     html += `<button class="hist-row" data-id="${it.id}">
       ${typeBadge(it.type)}
@@ -656,12 +679,12 @@ function renderHistoryList() {
     </button>`;
   }
   if (day) html += '</div>';
-  if (all.length > shown.length) html += `<button class="more" data-more>Show more (${(all.length - shown.length).toLocaleString()} left)</button>`;
+  if (all.length > shown.length) html += `<button class="more" data-more>${t('showMore', { n: (all.length - shown.length).toLocaleString('en-US') })}</button>`;
   listEl.innerHTML = html;
 
   const counts = new Map();
   all.forEach((i) => counts.set(i.date.slice(0, 7), (counts.get(i.date.slice(0, 7)) || 0) + 1));
-  $('[data-months]', view).innerHTML = [...counts].map(([ym, n]) => `<button data-ym="${ym}"><span>${M.formatMonth(ym)}</span><span class="num muted">${n}</span></button>`).join('');
+  $('[data-months]', view).innerHTML = [...counts].map(([ym, n]) => `<button data-ym="${ym}"><span>${fmtMonth(ym)}</span><span class="num muted">${n}</span></button>`).join('');
 
   $$('.hist-row', listEl).forEach((b) => b.addEventListener('click', () => openEditor(S.items.find((i) => i.id === b.dataset.id))));
   $$('[data-open]', listEl).forEach((b) => b.addEventListener('click', () => { S.day = b.dataset.open; go('day'); }));
@@ -675,139 +698,143 @@ function renderHistoryList() {
 }
 
 function historyFor(q) {
-  S.hist = { q, type: 'all', ratings: new Set(), status: 'done', preset: 'all', from: '', to: '', limit: 200 };
+  S.hist = freshHist({ q, status: 'done', preset: 'all' });
   go('history');
 }
 
 // ---------- Insights view ----------
 
-const ratingName = (avg) => (avg == null ? '—' : M.ratingInfo(Math.round(avg)).label);
 const fmtAvg = (avg) => (avg == null ? '—' : avg.toFixed(1));
 
 function trend(now, before) {
-  if (now == null || before == null) return '<span class="muted">no earlier data to compare</span>';
+  if (now == null || before == null) return `<span class="muted">${t('trendNone')}</span>`;
   const d = now - before;
-  if (Math.abs(d) < 0.05) return '<span class="muted">same as the 30 days before</span>';
-  return `<span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}</span> <span class="muted">vs the 30 days before</span>`;
+  if (Math.abs(d) < 0.05) return `<span class="muted">${t('trendSame')}</span>`;
+  return `<span class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '▲' : '▼'} ${Math.abs(d).toFixed(1)}</span> <span class="muted">${t('trendVs')}</span>`;
 }
 
 function spotList(runs, empty, max = 12) {
   if (!runs.length) return `<div class="empty">${empty}</div>`;
   return `<ul class="spots">${runs.slice(0, max).map((r) => `<li><button data-spot="${r.from.s}:${r.from.a}-${r.to.a}">
       ${ratingPill(r.rating)}
-      <span class="sp-range">${esc(formatRange(r.from, r.to))} <span class="ar">${esc(surah(r.from.s).ar)}</span></span>
-      <span class="muted sp-when">${plural(r.end - r.start + 1, 'ayah')} · ${M.weekday(r.date)} ${M.formatDate(r.date)}</span>
-    </button></li>`).join('')}</ul>${runs.length > max ? `<div class="muted more-note">+ ${runs.length - max} more</div>` : ''}`;
+      <span class="sp-range">${esc(rangeLabel(r.from, r.to))} <span class="ar">${esc(surah(r.from.s).ar)}</span></span>
+      <span class="muted sp-when">${count(r.end - r.start + 1, 'ayah')} · ${weekdayName(r.date)} ${fmtDate(r.date)}</span>
+    </button></li>`).join('')}</ul>${runs.length > max ? `<div class="muted more-note">${t('moreN', { n: runs.length - max })}</div>` : ''}`;
 }
 
 function renderInsights() {
   const I = M.insights(S.items);
   const pct = (I.known / TOTAL_AYAHS) * 100;
-  const t = M.today();
+  const td = M.today();
 
   // Activity heatmap: 26 weeks, Sunday-first columns.
-  const startHM = M.addDays(t, -M.weekdayIndex(t) - 25 * 7);
+  const startHM = M.addDays(td, -M.weekdayIndex(td) - 25 * 7);
   const maxAyahs = Math.max(1, ...[...I.activity.values()].map((a) => a.ayahs));
   let cells = '';
   for (let k = 0; k < 26 * 7; k++) {
     const d = M.addDays(startHM, Math.floor(k / 7) * 7 + (k % 7));
-    if (d > t) { cells += '<span class="hm-cell future"></span>'; continue; }
+    if (d > td) { cells += '<span class="hm-cell future"></span>'; continue; }
     const a = I.activity.get(d);
     const lvl = a ? Math.max(1, Math.ceil((a.ayahs / maxAyahs) * 4)) : 0;
-    const tip = `${M.weekday(d)} ${M.formatDate(d)} — ${a ? `${plural(a.sessions, 'session')}, ${plural(a.ayahs, 'ayah')}, avg ${ratingName(a.sum / a.sessions)}` : 'nothing logged'}`;
+    const tip = a
+      ? t('hmTip', { day: `${weekdayName(d)} ${fmtDate(d)}`, s: count(a.sessions, 'session'), a: count(a.ayahs, 'ayah'), r: ratingName(a.sum / a.sessions) })
+      : `${weekdayName(d)} ${fmtDate(d)} — ${t('nothingLogged')}`;
     cells += `<span class="hm-cell l${lvl}" data-tip="${esc(tip)}" data-day="${d}"></span>`;
   }
   const monthLabels = Array.from({ length: 26 }, (_, w) => {
     const d = M.addDays(startHM, w * 7);
     const prev = M.addDays(d, -7);
-    return `<span>${w > 0 && d.slice(5, 7) !== prev.slice(5, 7) ?M.parseDate(d).toLocaleDateString('en-GB', { month: 'short' }) : ''}</span>`;
+    return `<span>${w > 0 && d.slice(5, 7) !== prev.slice(5, 7) ? fmtMonthShort(d.slice(0, 7)) : ''}</span>`;
   }).join('');
 
   const distRow = (type) => {
     const d = I.distribution[type];
     const total = d[1] + d[2] + d[3] + d[4];
-    return `<div class="dist-row"><span class="dist-lbl">${M.TYPES[type]}</span>
+    return `<div class="dist-row"><span class="dist-lbl">${typeLabel(type)}</span>
       <div class="dist-bar">${total ? M.RATINGS.filter((r) => d[r.v]).map((r) =>
-        `<span class="r${r.v}" style="flex:${d[r.v]}" data-tip="${M.TYPES[type]} · ${r.label}: ${d[r.v]} (${Math.round((d[r.v] / total) * 100)}%)"></span>`).join('') : '<span class="none"></span>'}</div>
+        `<span class="r${r.v}" style="flex:${d[r.v]}" data-tip="${typeLabel(type)} · ${ratingLabel(r.v)}: ${d[r.v]} (${Math.round((d[r.v] / total) * 100)}%)"></span>`).join('') : '<span class="none"></span>'}</div>
       <span class="num muted">${total}</span></div>`;
   };
 
   const maxWd = Math.max(1, ...I.weekdays.map((w) => w.sessions));
   const monthBars = (key) => {
     const max = Math.max(1, ...I.months.map((m) => m[key]));
-    return `<div class="mbars">${I.months.map((m) => `<div class="mbar" data-tip="${M.formatMonth(m.ym)}: ${plural(m[key], 'ayah')}">
+    return `<div class="mbars">${I.months.map((m) => `<div class="mbar" data-tip="${fmtMonth(m.ym)}: ${count(m[key], 'ayah')}">
       <div class="mbar-col"><span style="height:${(m[key] / max) * 100}%"></span></div>
-      <span class="mbar-l">${M.parseDate(`${m.ym}-01`).toLocaleDateString('en-GB', { month: 'narrow' })}</span></div>`).join('')}</div>
-      <div class="mbars-foot muted"><span>${M.formatMonth(I.months[0].ym)}</span><span>max ${plural(Math.max(...I.months.map((m) => m[key])), 'ayah')}</span></div>`;
+      <span class="mbar-l">${fmtMonthTiny(m.ym)}</span></div>`).join('')}</div>
+      <div class="mbars-foot muted"><span>${fmtMonth(I.months[0].ym)}</span><span>${t('maxN', { n: count(Math.max(...I.months.map((m) => m[key])), 'ayah') })}</span></div>`;
   };
 
   const tile = (x, label, sub, ar, q) => {
     const bucket = x.avg == null ? 0 : Math.round(x.avg);
-    const tip = x.known ? `${label} — ${Math.round(x.coverage * 100)}% covered, avg ${fmtAvg(x.avg)} (${ratingName(x.avg)})${x.staleDays != null ? `, oldest part last seen ${x.staleDays} days ago` : ''}` : `${label} — not started`;
+    const tip = x.known
+      ? t('tileTip', { name: label, p: Math.round(x.coverage * 100), a: fmtAvg(x.avg), r: ratingName(x.avg) }) +
+        (x.staleDays != null ? t('tileStale', { d: relDay(M.addDays(td, -x.staleDays)) }) : '')
+      : t('tileNot', { name: label });
     return `<button class="tile ${bucket ? `has r${bucket}` : ''}" data-q="${q}" data-tip="${esc(tip)}">
       <span class="tile-n">${sub}</span><span class="tile-name">${esc(label)}</span>${ar ? `<span class="tile-ar ar">${ar}</span>` : ''}
       <span class="tile-bar"><span style="width:${Math.round(x.coverage * 100)}%"></span></span></button>`;
   };
   const map = S.mapMode === 'surah'
-    ? I.perSurah.map((x) => tile(x, surah(x.n).name, x.n, surah(x.n).ar, String(x.n))).join('')
-    : I.perJuz.map((x) => tile(x, `Juz ${x.n}`, x.n, '', `juz ${x.n}`)).join('');
+    ? I.perSurah.map((x) => tile(x, surahName(x.n), x.n, surah(x.n).ar, String(x.n))).join('')
+    : I.perJuz.map((x) => tile(x, t('juzN', { n: x.n }), x.n, '', `juz ${x.n}`)).join('');
 
   const adh = I.adherence.done + I.adherence.missed;
 
   view.innerHTML = `
-    <header class="page-head"><div><h1>Insights</h1><p class="muted">Based on rated sessions. A session's rating applies to every ayah in its range; the latest rating counts.</p></div></header>
-    ${!S.items.some((i) => i.rating) ? '<div class="empty big">Rate a few sessions and your insights will appear here.</div>' : ''}
+    <header class="page-head"><div><h1>${t('nav.insights')}</h1><p class="muted">${t('insSub')}</p></div></header>
+    ${!S.items.some((i) => i.rating) ? `<div class="empty big">${t('insEmpty')}</div>` : ''}
     <div class="kpis">
-      <div class="kpi"><div class="kpi-l">Ayahs known</div><div class="kpi-v">${I.known.toLocaleString()}</div>
-        <div class="kpi-s">${pct.toFixed(1)}% of the Quran · ≈ ${(I.known / (TOTAL_AYAHS / 30)).toFixed(1)} juz</div>
+      <div class="kpi"><div class="kpi-l">${t('kpiKnown')}</div><div class="kpi-v">${I.known.toLocaleString('en-US')}</div>
+        <div class="kpi-s">${t('kpiKnownSub', { p: pct.toFixed(1), j: (I.known / (TOTAL_AYAHS / 30)).toFixed(1) })}</div>
         <div class="meter"><span style="width:${pct}%"></span></div></div>
-      <div class="kpi"><div class="kpi-l">Newly memorized</div><div class="kpi-v">${I.memorizedNew.toLocaleString()}</div><div class="kpi-s">ayahs with a rated memorization session</div></div>
-      <div class="kpi"><div class="kpi-l">Streak</div><div class="kpi-v">${plural(I.streak, 'day')}</div><div class="kpi-s">longest ${plural(I.longestStreak, 'day')} · ${I.activeDays30} active days in the last 30</div></div>
-      <div class="kpi"><div class="kpi-l">Memorization quality · 30 days</div><div class="kpi-v">${fmtAvg(I.avg30.memorize)} <small>${ratingName(I.avg30.memorize)}</small></div><div class="kpi-s">${trend(I.avg30.memorize, I.avgPrior.memorize)}</div></div>
-      <div class="kpi"><div class="kpi-l">Review quality · 30 days</div><div class="kpi-v">${fmtAvg(I.avg30.review)} <small>${ratingName(I.avg30.review)}</small></div><div class="kpi-s">${trend(I.avg30.review, I.avgPrior.review)}</div></div>
-      <div class="kpi"><div class="kpi-l">Plan follow-through · 30 days</div><div class="kpi-v">${adh ? `${Math.round((I.adherence.done / adh) * 100)}%` : '—'}</div><div class="kpi-s">${I.adherence.done} done · ${I.adherence.missed} not done · ${I.upcoming.length} upcoming</div></div>
+      <div class="kpi"><div class="kpi-l">${t('kpiNew')}</div><div class="kpi-v">${I.memorizedNew.toLocaleString('en-US')}</div><div class="kpi-s">${t('kpiNewSub')}</div></div>
+      <div class="kpi"><div class="kpi-l">${t('kpiStreak')}</div><div class="kpi-v">${count(I.streak, 'day')}</div><div class="kpi-s">${t('kpiStreakSub', { l: count(I.longestStreak, 'day'), a: I.activeDays30 })}</div></div>
+      <div class="kpi"><div class="kpi-l">${t('kpiMemQ')}</div><div class="kpi-v">${fmtAvg(I.avg30.memorize)} <small>${ratingName(I.avg30.memorize)}</small></div><div class="kpi-s">${trend(I.avg30.memorize, I.avgPrior.memorize)}</div></div>
+      <div class="kpi"><div class="kpi-l">${t('kpiRevQ')}</div><div class="kpi-v">${fmtAvg(I.avg30.review)} <small>${ratingName(I.avg30.review)}</small></div><div class="kpi-s">${trend(I.avg30.review, I.avgPrior.review)}</div></div>
+      <div class="kpi"><div class="kpi-l">${t('kpiPlan')}</div><div class="kpi-v">${adh ? `${Math.round((I.adherence.done / adh) * 100)}%` : '—'}</div><div class="kpi-s">${t('kpiPlanSub', { d: I.adherence.done, m: I.adherence.missed, u: I.upcoming.length })}</div></div>
     </div>
 
     <section class="panel">
-      <header><h2>Quran map</h2>
-        <div class="seg small" data-mapmode><button data-v="surah" aria-pressed="${S.mapMode === 'surah'}">By surah</button><button data-v="juz" aria-pressed="${S.mapMode === 'juz'}">By juz</button></div>
-        <div class="legend">${M.RATINGS.map((r) => `<span><i class="sw r${r.v}"></i>${r.label}</span>`).join('')}<span><i class="sw none"></i>Not started</span><span class="muted">Bar = share covered · click to see history</span></div>
+      <header><h2>${t('quranMap')}</h2>
+        <div class="seg small" data-mapmode><button data-v="surah" aria-pressed="${S.mapMode === 'surah'}">${t('bySurah')}</button><button data-v="juz" aria-pressed="${S.mapMode === 'juz'}">${t('byJuz')}</button></div>
+        <div class="legend">${M.RATINGS.map((r) => `<span><i class="sw r${r.v}"></i>${ratingLabel(r.v)}</span>`).join('')}<span><i class="sw none"></i>${t('notStarted')}</span><span class="muted">${t('mapHint')}</span></div>
       </header>
       <div class="tiles ${S.mapMode}">${map}</div>
     </section>
 
     <div class="grid3">
-      <section class="panel"><header><h2>Needs care</h2><span class="muted">latest rating Poor or Good</span></header>
-        ${spotList(I.attention, 'Nothing rated Poor or Good right now.')}</section>
-      <section class="panel"><header><h2>Strong spots</h2><span class="muted">latest rating Excellent</span></header>
-        ${spotList(I.strong, 'No Excellent ratings yet.')}</section>
-      <section class="panel"><header><h2>Due for review</h2><span class="muted">known parts untouched 30+ days</span></header>
+      <section class="panel"><header><h2>${t('needsCare')}</h2><span class="muted">${t('needsCareSub')}</span></header>
+        ${spotList(I.attention, t('needsCareEmpty'))}</section>
+      <section class="panel"><header><h2>${t('strong')}</h2><span class="muted">${t('strongSub')}</span></header>
+        ${spotList(I.strong, t('strongEmpty'))}</section>
+      <section class="panel"><header><h2>${t('due')}</h2><span class="muted">${t('dueSub')}</span></header>
         ${I.stale.length ? `<ul class="spots">${I.stale.slice(0, 12).map((s) => `<li><button data-q="${s.n}">
-          <span class="pill"><b class="num">${s.staleDays}</b>&nbsp;days</span>
-          <span class="sp-range">${esc(surah(s.n).name)} <span class="ar">${surah(s.n).ar}</span></span>
-          <span class="muted sp-when">${Math.round(s.coverage * 100)}% known · avg ${ratingName(s.avg)}</span></button></li>`).join('')}</ul>` : '<div class="empty">Everything you know was seen in the last 30 days.</div>'}</section>
+          <span class="pill"><b class="num">${s.staleDays}</b>&nbsp;${t('daysWord')}</span>
+          <span class="sp-range">${esc(surahName(s.n))} <span class="ar">${surah(s.n).ar}</span></span>
+          <span class="muted sp-when">${t('dueMeta', { p: Math.round(s.coverage * 100), r: ratingName(s.avg) })}</span></button></li>`).join('')}</ul>` : `<div class="empty">${t('dueEmpty')}</div>`}</section>
     </div>
 
     <div class="grid2">
-      <section class="panel"><header><h2>Activity</h2><span class="muted">last 26 weeks · darker = more ayahs</span></header>
-        <div class="heatmap"><div class="hm-wd">${M.WEEKDAYS.map((w, k) => `<span>${k % 2 ? w.slice(0, 3) : ''}</span>`).join('')}</div>
+      <section class="panel"><header><h2>${t('activity')}</h2><span class="muted">${t('activitySub')}</span></header>
+        <div class="heatmap"><div class="hm-wd">${M.WEEKDAYS.map((_, k) => `<span>${k % 2 ? weekdayByIndex(k, true) : ''}</span>`).join('')}</div>
           <div><div class="hm-months">${monthLabels}</div><div class="hm-grid">${cells}</div></div></div>
-        <div class="legend"><span class="muted">Less</span>${[0, 1, 2, 3, 4].map((l) => `<i class="hm-cell l${l}"></i>`).join('')}<span class="muted">More</span></div>
+        <div class="legend"><span class="muted">${t('less')}</span>${[0, 1, 2, 3, 4].map((l) => `<i class="hm-cell l${l}"></i>`).join('')}<span class="muted">${t('more')}</span></div>
       </section>
-      <section class="panel"><header><h2>Ratings</h2><span class="muted">all rated sessions</span></header>
+      <section class="panel"><header><h2>${t('ratings')}</h2><span class="muted">${t('ratingsSub')}</span></header>
         ${distRow('memorize')}${distRow('review')}
-        <div class="legend">${M.RATINGS.map((r) => `<span><i class="sw r${r.v}"></i>${r.label}</span>`).join('')}</div>
+        <div class="legend">${M.RATINGS.map((r) => `<span><i class="sw r${r.v}"></i>${ratingLabel(r.v)}</span>`).join('')}</div>
       </section>
     </div>
 
     <div class="grid3">
-      <section class="panel"><header><h2>By day of week</h2><span class="muted">sessions · avg rating</span></header>
-        <div class="wdbars">${I.weekdays.map((w) => `<div class="wdbar" data-tip="${w.name}: ${plural(w.sessions, 'session')} on ${plural(w.days, 'day')}, avg ${fmtAvg(w.avg)}">
-          <span class="wd-n">${w.name.slice(0, 3)}</span><span class="wd-track"><span style="width:${(w.sessions / maxWd) * 100}%"></span></span>
+      <section class="panel"><header><h2>${t('byWeekday')}</h2><span class="muted">${t('byWeekdaySub')}</span></header>
+        <div class="wdbars">${I.weekdays.map((w) => `<div class="wdbar" data-tip="${esc(t('wdTip', { w: weekdayByIndex(w.w), s: count(w.sessions, 'session'), d: count(w.days, 'day'), a: fmtAvg(w.avg) }))}">
+          <span class="wd-n">${weekdayByIndex(w.w, true)}</span><span class="wd-track"><span style="width:${(w.sessions / maxWd) * 100}%"></span></span>
           <span class="num wd-v">${w.sessions}</span><span class="wd-r muted">${w.avg == null ? '' : ratingName(w.avg)}</span></div>`).join('')}</div>
       </section>
-      <section class="panel"><header><h2>Memorized per month</h2><span class="muted">ayahs</span></header>${monthBars('memorized')}</section>
-      <section class="panel"><header><h2>Reviewed per month</h2><span class="muted">ayahs</span></header>${monthBars('reviewed')}</section>
+      <section class="panel"><header><h2>${t('memPerMonth')}</h2><span class="muted">${t('inAyahs')}</span></header>${monthBars('memorized')}</section>
+      <section class="panel"><header><h2>${t('revPerMonth')}</h2><span class="muted">${t('inAyahs')}</span></header>${monthBars('reviewed')}</section>
     </div>`;
 
   $$('[data-mapmode] button', view).forEach((b) => b.addEventListener('click', () => { S.mapMode = b.dataset.v; renderInsights(); }));
@@ -818,10 +845,12 @@ function renderInsights() {
 
 // ---------- Backup view ----------
 
+const BACKUP_FILE = `<code dir="ltr">${M.APP}-backup.json</code>`;
+
 async function doExport() {
   const r = await store.exportBackup({ preferShare: false });
   if (r.cancelled) return;
-  toast(`Exported ${plural(r.count, 'record')} to ${M.APP}-backup.json`);
+  toast(t('exportedN', { n: count(r.count, 'record'), file: `${M.APP}-backup.json` }));
   renderChrome();
   if (S.view === 'backup') render();
 }
@@ -831,29 +860,25 @@ async function renderBackup() {
   const all = await store.all({ includeDeleted: true });
   const r = S.lastImport;
   view.innerHTML = `
-    <header class="page-head"><div><h1>Backup</h1><p class="muted">Your data stays on this Mac (in this browser’s storage). Export a file to back it up or move it to your iPhone.</p></div></header>
+    <header class="page-head"><div><h1>${t('nav.backup')}</h1><p class="muted">${t('backupSub')}</p></div></header>
     <div class="grid2">
       <section class="panel">
-        <header><h2>Export</h2></header>
-        <p>Saves <code>${M.APP}-backup.json</code> with all ${plural(all.length, 'record')} (deletions included, so they sync too).</p>
-        <p class="muted">Last exported: <b>${lastExp ? `${M.weekday(M.dateStr(new Date(lastExp)))}, ${new Date(lastExp).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}` : 'never'}</b></p>
-        <button class="primary" data-export>Export backup</button>
-        <p class="hint">Tip: move the file to iCloud Drive to reach it from your iPhone.</p>
+        <header><h2>${t('exportTitle')}</h2></header>
+        <p>${t('exportDesc', { file: BACKUP_FILE, n: count(all.length, 'record') })}</p>
+        <p class="muted">${t('lastExportedB')} <b>${lastExp ? `${weekdayName(M.dateStr(new Date(lastExp)))}${isAr() ? '، ' : ', '}${fmtDateTime(lastExp)}` : t('never')}</b></p>
+        <button class="primary" data-export>${t('exportBackup')}</button>
+        <p class="hint">${t('exportTip')}</p>
       </section>
       <section class="panel">
-        <header><h2>Import</h2></header>
-        <p>Merges a backup into this device. For each record the <b>newer</b> version wins, so an old backup never overwrites newer data here.</p>
-        <label class="file-btn"><input type="file" accept=".json,application/json" data-import>Choose backup file…</label>
+        <header><h2>${t('importTitle')}</h2></header>
+        <p>${t('importDesc')}</p>
+        <label class="file-btn"><input type="file" accept=".json,application/json" data-import>${t('chooseFile')}</label>
         <div data-result>${r ? importSummary(r) : ''}</div>
       </section>
     </div>
     <section class="panel">
-      <header><h2>Syncing Mac ↔ iPhone</h2></header>
-      <ol class="steps">
-        <li>On the device with the newest changes: <b>Export</b> and save the file to iCloud Drive.</li>
-        <li>On the other device: <b>Import</b> that file. You’ll see what was added and updated.</li>
-        <li>To bring changes back, export there and import here. Importing in both directions is always safe.</li>
-      </ol>
+      <header><h2>${t('syncTitle')}</h2></header>
+      <ol class="steps"><li>${t('sync1')}</li><li>${t('sync2')}</li><li>${t('sync3')}</li></ol>
     </section>`;
   $('[data-export]', view).addEventListener('click', doExport);
   $('[data-import]', view).addEventListener('change', async (e) => {
@@ -861,34 +886,41 @@ async function renderBackup() {
     if (!f) return;
     try {
       S.lastImport = await store.importBackup(f);
-      toast('Import finished');
+      toast(t('importDone'));
     } catch (err) {
-      S.lastImport = { error: err.message };
+      S.lastImport = { error: err.code ? t(`err.${err.code}`) : err.message };
     }
     await reload();
   });
 }
 
 function importSummary(r) {
-  if (r.error) return `<div class="result err"><b>Import failed.</b> ${esc(r.error)} Nothing was changed.</div>`;
+  if (r.error) return `<div class="result err"><b>${t('importFailed')}</b> ${esc(r.error)} ${t('nothingChanged')}</div>`;
   return `<div class="result">
-    <b>Import finished</b>${r.exportedAt ? ` <span class="muted">— backup from ${new Date(r.exportedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>` : ''}
+    <b>${t('importDone')}</b>${r.exportedAt ? ` <span class="muted">${t('backupFrom', { d: fmtDateTime(r.exportedAt) })}</span>` : ''}
     <ul>
-      <li><b class="num">${r.added}</b> added</li>
-      <li><b class="num">${r.updated}</b> updated (the backup had a newer version)</li>
-      <li><b class="num">${r.unchanged}</b> unchanged</li>
-      <li><b class="num">${r.keptLocal}</b> kept as-is (this device had a newer version)</li>
-      ${r.invalid ? `<li><b class="num">${r.invalid}</b> skipped (unreadable)</li>` : ''}
+      <li><b class="num">${r.added}</b> ${t('resAdded')}</li>
+      <li><b class="num">${r.updated}</b> ${t('resUpdated')}</li>
+      <li><b class="num">${r.unchanged}</b> ${t('resUnchanged')}</li>
+      <li><b class="num">${r.keptLocal}</b> ${t('resKept')}</li>
+      ${r.invalid ? `<li><b class="num">${r.invalid}</b> ${t('resInvalid')}</li>` : ''}
     </ul>
-    ${r.migratedFrom ? `<p class="muted">Upgraded from schema version ${r.migratedFrom}.</p>` : ''}
+    ${r.migratedFrom ? `<p class="muted">${t('migrated', { n: r.migratedFrom })}</p>` : ''}
   </div>`;
 }
 
 // ---------- chrome, routing, keys ----------
 
+function renderStatic() {
+  $$('[data-i18n]').forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  $('.brand-sub').classList.toggle('ar', !isAr());
+  $$('[data-lang]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+}
+
 async function renderChrome() {
+  renderStatic();
   const lastExp = await store.getMeta('lastExported');
-  $('#last-export').textContent = `Last exported: ${lastExp ? M.formatDate(M.dateStr(new Date(lastExp))) : 'never'}`;
+  $('#last-export').textContent = t('lastExported', { d: lastExp ? fmtDate(M.dateStr(new Date(lastExp))) : t('never') });
   const todo = S.items.filter((i) => i.date === M.today() && !i.rating).length;
   $('#badge-today').textContent = todo || '';
   $$('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.view === S.view));
@@ -912,13 +944,24 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 
+$$('[data-lang]').forEach((b) => b.addEventListener('click', () => {
+  setLang(b.dataset.lang);
+  renderChrome();
+  render();
+}));
+
 document.addEventListener('keydown', (e) => {
   if (dlg.open || e.metaKey || e.ctrlKey || e.altKey) return;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) return;
   if (e.key === '/') { e.preventDefault(); if (S.view !== 'history') go('history'); setTimeout(() => $('[data-q]')?.focus(), 0); }
   else if (e.key === 't' || e.key === 'T') { S.day = M.today(); go('day'); }
   else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openEditor({ type: 'memorize', date: S.view === 'day' ? S.day : M.today() }); }
-  else if (S.view === 'day' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { S.day = M.addDays(S.day, e.key === 'ArrowLeft' ? -1 : 1); render(); }
+  else if (S.view === 'day' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    // Arrow keys follow the reading direction: in Arabic, ← is the next day.
+    const forward = (e.key === 'ArrowRight') !== isAr();
+    S.day = M.addDays(S.day, forward ? 1 : -1);
+    render();
+  }
 });
 
 // Hover tooltip for any element with data-tip.
@@ -931,7 +974,7 @@ document.addEventListener('mouseover', (e) => {
 });
 document.addEventListener('mousemove', (e) => {
   if (tip.hidden) return;
-  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  const x = Math.max(8, Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8));
   const y = e.clientY + 18 + tip.offsetHeight > window.innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 18;
   tip.style.transform = `translate(${x}px, ${y}px)`;
 });
@@ -955,5 +998,6 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) location.reload(); });
 }
 
+applyDocLang();
 S.view = ['day', 'plan', 'history', 'insights', 'backup'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'day';
 reload();

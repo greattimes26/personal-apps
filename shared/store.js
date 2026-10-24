@@ -30,6 +30,10 @@ function txDone(tx) {
   });
 }
 
+function fail(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+
 function time(iso) {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? -Infinity : t;
@@ -173,17 +177,17 @@ export function createStore({ app, schemaVersion, migrate = (items) => items, va
     try {
       data = JSON.parse(text);
     } catch {
-      throw new Error('This file is not valid JSON.');
+      throw fail('not-json', 'This file is not valid JSON.');
     }
     if (!data || typeof data !== 'object' || !Array.isArray(data.items)) {
-      throw new Error('This file is not a backup (no items list).');
+      throw fail('not-backup', 'This file is not a backup (no items list).');
     }
     if (data.app !== app) {
-      throw new Error(`This backup belongs to "${data.app}", not "${app}".`);
+      throw fail('wrong-app', `This backup belongs to "${data.app}", not "${app}".`);
     }
     const fileVersion = Number(data.schemaVersion) || 1;
     if (fileVersion > schemaVersion) {
-      throw new Error('This backup was made by a newer version of the app. Update the app first, then import.');
+      throw fail('newer-version', 'This backup was made by a newer version of the app. Update the app first, then import.');
     }
     let incoming = data.items;
     if (fileVersion < schemaVersion) incoming = migrate(incoming, fileVersion);

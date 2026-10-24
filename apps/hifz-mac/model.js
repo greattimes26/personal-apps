@@ -11,15 +11,13 @@ export const APP = 'hifz';
 export const SCHEMA_VERSION = 1;
 
 export const RATINGS = [
-  { v: 4, key: 'excellent', label: 'Excellent', short: 'Exc' },
-  { v: 3, key: 'verygood', label: 'Very Good', short: 'V.Good' },
-  { v: 2, key: 'good', label: 'Good', short: 'Good' },
-  { v: 1, key: 'poor', label: 'Poor', short: 'Poor' },
+  { v: 4, key: 'excellent' },
+  { v: 3, key: 'verygood' },
+  { v: 2, key: 'good' },
+  { v: 1, key: 'poor' },
 ];
-export const ratingInfo = (v) => RATINGS.find((r) => r.v === v);
 
-export const TYPES = { memorize: 'Memorization', review: 'Review' };
-
+// English names, used for search; display names come from i18n.js.
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function validateItem(i) {
@@ -40,27 +38,9 @@ export const dateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad
 export const parseDate = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
 export const today = () => dateStr(new Date());
 export const addDays = (s, n) => { const d = parseDate(s); d.setDate(d.getDate() + n); return dateStr(d); };
-export const weekday = (s) => WEEKDAYS[parseDate(s).getDay()];
 export const weekdayIndex = (s) => parseDate(s).getDay();
 /** Whole days from a to b. */
 export const dayDiff = (a, b) => Math.round((parseDate(b) - parseDate(a)) / 86400000);
-
-export function formatDate(s, { year = true } = {}) {
-  return parseDate(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) });
-}
-export function formatLongDate(s) {
-  return parseDate(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
-}
-export function formatMonth(ym) {
-  return parseDate(`${ym}-01`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
-}
-export function hijri(s) {
-  try {
-    return parseDate(s).toLocaleDateString('en-GB-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' });
-  } catch {
-    return '';
-  }
-}
 
 // ---------- sessions ----------
 
@@ -71,7 +51,6 @@ export function status(item, t = today()) {
   if (item.date === t) return 'today';
   return 'planned';
 }
-export const STATUS_LABEL = { done: 'Done', today: 'To do', planned: 'Planned', missed: 'Not done' };
 
 export function sizeOf(item) {
   const [x, y] = rangeIdx(item.from, item.to);

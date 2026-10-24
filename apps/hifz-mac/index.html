@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Hifz</title>
+  <title>حفظ</title>
   <meta name="description" content="Plan, track and review Quran memorization.">
   <meta name="theme-color" content="#1f6f5c">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,21 +20,24 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">ح</div>
         <div>
-          <div class="brand-name">Hifz</div>
-          <div class="brand-sub ar">حفظ القرآن</div>
+          <div class="brand-name" data-i18n="brandName">حِفظ</div>
+          <div class="brand-sub" data-i18n="brandSub"></div>
         </div>
       </div>
       <nav class="nav" id="nav">
-        <a href="#day" data-view="day"><span class="ico" aria-hidden="true">◉</span>Day<span class="nav-badge" id="badge-today"></span></a>
-        <a href="#plan" data-view="plan"><span class="ico" aria-hidden="true">▦</span>Plan</a>
-        <a href="#history" data-view="history"><span class="ico" aria-hidden="true">☰</span>History</a>
-        <a href="#insights" data-view="insights"><span class="ico" aria-hidden="true">◔</span>Insights</a>
-        <a href="#backup" data-view="backup"><span class="ico" aria-hidden="true">⇅</span>Backup</a>
+        <a href="#day" data-view="day"><span class="ico" aria-hidden="true">◉</span><span data-i18n="nav.day"></span><span class="nav-badge" id="badge-today"></span></a>
+        <a href="#plan" data-view="plan"><span class="ico" aria-hidden="true">▦</span><span data-i18n="nav.plan"></span></a>
+        <a href="#history" data-view="history"><span class="ico" aria-hidden="true">☰</span><span data-i18n="nav.history"></span></a>
+        <a href="#insights" data-view="insights"><span class="ico" aria-hidden="true">◔</span><span data-i18n="nav.insights"></span></a>
+        <a href="#backup" data-view="backup"><span class="ico" aria-hidden="true">⇅</span><span data-i18n="nav.backup"></span></a>
       </nav>
       <div class="side-foot">
-        <div class="last-export" id="last-export">Last exported: never</div>
-        <button id="btn-export-side">Export backup</button>
-        <div class="keys muted">← → days · T today · N new · / search</div>
+        <div class="seg small lang-switch" role="group" aria-label="Language / اللغة">
+          <button data-lang="ar" lang="ar">العربية</button><button data-lang="en" lang="en">English</button>
+        </div>
+        <div class="last-export" id="last-export"></div>
+        <button id="btn-export-side" data-i18n="exportBackup"></button>
+        <div class="keys muted" data-i18n="keysHint"></div>
       </div>
     </aside>
     <main id="view" tabindex="-1"></main>

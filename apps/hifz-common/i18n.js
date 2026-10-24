@@ -1,4 +1,5 @@
-// Hifz — language support (Arabic default, English). Display-only: stored data has no language.
+// Hifz — language support shared by the Mac and iPhone apps (Arabic default, English).
+// Display-only: stored data has no language.
 import { surah, formatRange, rangeIdx, juzOfIndex } from '../../shared/quran.js';
 
 const KEY = 'hifz:lang';
@@ -27,7 +28,6 @@ const STR = {
     brandName: 'Hifz', brandSub: 'حفظ القرآن',
     'nav.day': 'Day', 'nav.plan': 'Plan', 'nav.history': 'History', 'nav.insights': 'Insights', 'nav.backup': 'Backup',
     lastExported: 'Last exported: {d}', never: 'never', exportBackup: 'Export backup',
-    keysHint: '← → days · T today · N new · / search',
 
     today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', inN: 'In {n}', nAgo: '{n} ago',
     memorization: 'Memorization', review: 'Review', memShort: 'Memorize', revShort: 'Review',
@@ -98,9 +98,8 @@ const STR = {
     byWeekday: 'By day of week', byWeekdaySub: 'sessions · avg rating', wdTip: '{w}: {s} on {d}, avg {a}',
     memPerMonth: 'Memorized per month', revPerMonth: 'Reviewed per month', inAyahs: 'ayahs', maxN: 'max {n}',
 
-    backupSub: 'Your data stays on this Mac (in this browser’s storage). Export a file to back it up or move it to your iPhone.',
     exportTitle: 'Export', exportDesc: 'Saves {file} with all {n} (deletions included, so they sync too).',
-    lastExportedB: 'Last exported:', exportTip: 'Tip: move the file to iCloud Drive to reach it from your iPhone.',
+    lastExportedB: 'Last exported:',
     importTitle: 'Import',
     importDesc: 'Merges a backup into this device. For each record the <b>newer</b> version wins, so an old backup never overwrites newer data here.',
     chooseFile: 'Choose backup file…', syncTitle: 'Syncing Mac ↔ iPhone',
@@ -120,7 +119,6 @@ const STR = {
     brandName: 'حِفظ', brandSub: 'خطة الحفظ والمراجعة',
     'nav.day': 'اليوم', 'nav.plan': 'الخطة', 'nav.history': 'السجل', 'nav.insights': 'الإحصاءات', 'nav.backup': 'النسخ الاحتياطي',
     lastExported: 'آخر تصدير: {d}', never: 'لم يتم بعد', exportBackup: 'تصدير نسخة احتياطية',
-    keysHint: '← → الأيام · T اليوم · N جديد · / بحث',
 
     today: 'اليوم', tomorrow: 'غداً', yesterday: 'أمس', inN: 'بعد {n}', nAgo: 'قبل {n}',
     memorization: 'الحفظ', review: 'المراجعة', memShort: 'حفظ', revShort: 'مراجعة',
@@ -191,9 +189,8 @@ const STR = {
     byWeekday: 'حسب أيام الأسبوع', byWeekdaySub: 'الجلسات · متوسط التقييم', wdTip: '{w}: {s} في {d}، المتوسط {a}',
     memPerMonth: 'الحفظ شهرياً', revPerMonth: 'المراجعة شهرياً', inAyahs: 'بالآيات', maxN: 'الأعلى {n}',
 
-    backupSub: 'بياناتك محفوظة على هذا الماك (في تخزين المتصفح). صدّر ملفاً لحفظ نسخة احتياطية أو لنقلها إلى الآيفون.',
     exportTitle: 'التصدير', exportDesc: 'يحفظ {file} بكل البيانات ({n})، بما فيها المحذوفات لتُزامَن أيضاً.',
-    lastExportedB: 'آخر تصدير:', exportTip: 'نصيحة: انقل الملف إلى iCloud Drive لتصل إليه من الآيفون.',
+    lastExportedB: 'آخر تصدير:',
     importTitle: 'الاستيراد',
     importDesc: 'يدمج النسخة الاحتياطية مع بيانات هذا الجهاز. لكل سجل تُعتمد النسخة <b>الأحدث</b>، فلا تطغى نسخة قديمة على بيانات أحدث هنا.',
     chooseFile: 'اختر ملف النسخة…', syncTitle: 'المزامنة بين الماك والآيفون',
@@ -210,6 +207,11 @@ const STR = {
     'err.wrong-app': 'هذه النسخة الاحتياطية لتطبيق آخر.', 'err.newer-version': 'هذه النسخة من إصدار أحدث للتطبيق. حدّث التطبيق أولاً ثم استورد.',
   },
 };
+
+/** Each app adds its device-specific strings: addStrings({ en: {...}, ar: {...} }). */
+export function addStrings(extra) {
+  for (const l of Object.keys(extra)) Object.assign(STR[l], extra[l]);
+}
 
 export function t(key, params = {}) {
   const s = STR[lang][key] ?? STR.en[key] ?? key;

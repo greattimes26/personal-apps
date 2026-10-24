@@ -1,17 +1,30 @@
 // Hifz — Mac UI. Data/logic lives in model.js and /shared/; text and dates in i18n.js.
 import { createStore, requestPersistence } from '../../shared/store.js';
-import { SURAHS, JUZ, TOTAL_AYAHS, surah, ayahCount, toIndex, fromIndex, rangeIdx, matchSurahs, isValidPos, normalizeName } from '../../shared/quran.js';
-import * as M from './model.js';
+import { SURAHS, JUZ, TOTAL_AYAHS, surah, ayahCount, toIndex, fromIndex, isValidPos } from '../../shared/quran.js';
+import * as M from '../hifz-common/model.js';
 import {
-  t, count, setLang, applyDocLang, isAr, lang,
+  t, count, setLang, applyDocLang, isAr, lang, addStrings,
   ratingLabel, ratingName, typeLabel, typeShort, statusLabel, surahName, rangeLabel, juzLabel, surahOption,
   weekdayName, weekdayShort, weekdayByIndex, fmtDate, fmtLongDate, fmtMonth, fmtMonthShort, fmtMonthTiny, fmtDateTime, hijri,
-  AR_WEEKDAYS, AR_RATINGS,
-} from './i18n.js';
+} from '../hifz-common/i18n.js';
+import { freshFilters, filterSessions } from '../hifz-common/search.js';
+
+addStrings({
+  en: {
+    keysHint: '← → days · T today · N new · / search',
+    backupSub: 'Your data stays on this Mac (in this browser’s storage). Export a file to back it up or move it to your iPhone.',
+    exportTip: 'Tip: move the file to iCloud Drive to reach it from your iPhone.',
+  },
+  ar: {
+    keysHint: '← → الأيام · T اليوم · N جديد · / بحث',
+    backupSub: 'بياناتك محفوظة على هذا الماك (في تخزين المتصفح). صدّر ملفاً لحفظ نسخة احتياطية أو لنقلها إلى الآيفون.',
+    exportTip: 'نصيحة: انقل الملف إلى iCloud Drive لتصل إليه من الآيفون.',
+  },
+});
 
 const store = createStore({ app: M.APP, schemaVersion: M.SCHEMA_VERSION, migrate: M.migrate, validate: M.validateItem });
 
-const freshHist = (extra = {}) => ({ q: '', type: 'all', ratings: new Set(), status: 'all', preset: 'past', from: '', to: '', limit: 200, ...extra });
+const freshHist = freshFilters;
 
 const S = {
   items: [],
@@ -515,89 +528,6 @@ function openClearPlans() {
 
 // ---------- History view ----------
 
-const AR_WD_KEYS = AR_WEEKDAYS.map(normalizeName);
-const AR_RATING_KEYS = Object.fromEntries(Object.entries(AR_RATINGS).map(([k, v]) => [normalizeName(k), v]));
-
-/**
- * Search: "2:255", "2:1-20", "18" (surah), "juz 30" / "جزء 30", surah names (Latin/Arabic),
- * weekdays and ratings (English/Arabic), note text. Tokens are ANDed.
- */
-function matcher(q) {
-  const raw = q.trim().toLowerCase()
-    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-    .replace(/(?:juz|(?:ال)?جزء)\s*(\d+)/g, 'juz$1')
-    .replace(/very\s+good|جيد\s+جد[اًا]+/g, 'verygood')
-    .replace(/not\s+done|لم\s+يتم/g, 'notdone')
-    .replace(/سور[ةه]\s+/g, 'surah:');
-  if (!raw) return () => true;
-  const tests = raw.split(/\s+/).map((tok) => {
-    let m;
-    if ((m = tok.match(/^(\d{1,3}):(\d{1,3})$/))) {
-      const p = { s: Number(m[1]), a: Number(m[2]) };
-      if (!isValidPos(p)) return () => false;
-      const i = toIndex(p);
-      return (it) => M.overlaps(it, i, i);
-    }
-    if ((m = tok.match(/^(\d{1,3}):(\d{1,3})-(\d{1,3})$/))) {
-      const s = Number(m[1]);
-      if (!isValidPos({ s, a: Number(m[2]) }) || !isValidPos({ s, a: Number(m[3]) })) return () => false;
-      const [x, y] = rangeIdx({ s, a: Number(m[2]) }, { s, a: Number(m[3]) });
-      return (it) => M.overlaps(it, x, y);
-    }
-    if ((m = tok.match(/^#?(\d{1,3})$/)) && Number(m[1]) >= 1 && Number(m[1]) <= 114) {
-      const s = surah(Number(m[1]));
-      return (it) => M.overlaps(it, s.offset, s.offset + s.ayahs - 1);
-    }
-    if ((m = tok.match(/^juz(\d{1,2})$/)) && JUZ[Number(m[1]) - 1]) {
-      const j = JUZ[Number(m[1]) - 1];
-      return (it) => M.overlaps(it, j.start, j.end);
-    }
-    const surahOnly = tok.startsWith('surah:');
-    const word = surahOnly ? tok.slice(6) : tok;
-    const surahs = matchSurahs(word).map(surah);
-    const bySurah = (it) => surahs.some((s) => M.overlaps(it, s.offset, s.offset + s.ayahs - 1));
-    if (surahOnly) return bySurah;
-    // An exact Arabic weekday (e.g. الجمعة) means the day; use "سورة الجمعة" for the surah.
-    const arWd = AR_WD_KEYS.indexOf(normalizeName(word));
-    if (arWd >= 0) return (it) => M.weekdayIndex(it.date) === arWd;
-    const wd = tok.length >= 3 ? M.WEEKDAYS.findIndex((w) => w.toLowerCase().startsWith(tok)) : -1;
-    const rating = M.RATINGS.find((r) => r.key === tok)?.v || AR_RATING_KEYS[normalizeName(tok)];
-    return (it) =>
-      (wd >= 0 && M.weekdayIndex(it.date) === wd) ||
-      (rating && it.rating === rating) ||
-      (tok === 'notdone' && M.status(it) === 'missed') ||
-      bySurah(it) ||
-      (it.note || '').toLowerCase().includes(tok) ||
-      it.date.includes(tok);
-  });
-  return (it) => tests.every((fn) => fn(it));
-}
-
-function presetRange(p) {
-  const td = M.today();
-  switch (p) {
-    case '7': return [M.addDays(td, -6), td];
-    case '30': return [M.addDays(td, -29), td];
-    case '90': return [M.addDays(td, -89), td];
-    case 'month': return [`${td.slice(0, 7)}-01`, td];
-    case 'past': return ['', td];
-    case 'future': return [M.addDays(td, 1), ''];
-    default: return ['', ''];
-  }
-}
-
-function filteredHistory() {
-  const H = S.hist;
-  const m = matcher(H.q);
-  const [pf, pt] = H.preset === 'custom' ? [H.from, H.to] : presetRange(H.preset);
-  return S.items.filter((it) =>
-    (H.type === 'all' || it.type === H.type) &&
-    (!H.ratings.size || H.ratings.has(it.rating || 0)) &&
-    (H.status === 'all' || M.status(it) === H.status || (H.status === 'planned' && M.status(it) === 'today')) &&
-    (!pf || it.date >= pf) && (!pt || it.date <= pt) &&
-    m(it));
-}
-
 function renderHistory() {
   const H = S.hist;
   view.innerHTML = `
@@ -647,7 +577,7 @@ function renderHistory() {
 
 function renderHistoryList() {
   const H = S.hist;
-  const all = M.sortSessions(filteredHistory()).reverse();
+  const all = filterSessions(S.items, H);
   const shown = all.slice(0, H.limit);
   const listEl = $('[data-list]', view);
   const days = [...new Set(all.map((i) => i.date))];
@@ -860,6 +790,7 @@ async function doExport() {
 async function renderBackup() {
   const lastExp = await store.getMeta('lastExported');
   const all = await store.all({ includeDeleted: true });
+  if (S.view !== 'backup') return; // the user moved on while this was loading
   const r = S.lastImport;
   view.innerHTML = `
     <header class="page-head"><div><h1>${t('nav.backup')}</h1><p class="muted">${t('backupSub')}</p></div></header>

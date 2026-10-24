@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>حفظ</title>
+  <meta name="description" content="Plan, track and review Quran memorization.">
+  <meta name="theme-color" content="#f6f6f3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="حفظ">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="status-backdrop" aria-hidden="true"></div>
+  <main id="view"></main>
+  <nav class="tabbar" id="tabbar">
+    <a href="#day" data-view="day">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><circle cx="12" cy="15" r="1.6" class="fill"/></svg>
+      <span data-i18n="nav.day"></span><b class="tab-badge" id="badge-today"></b>
+    </a>
+    <a href="#plan" data-view="plan">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16.5" rx="3"/><path d="M7.5 9h9M7.5 12.5h9M7.5 16h5"/></svg>
+      <span data-i18n="nav.plan"></span>
+    </a>
+    <a href="#history" data-view="history">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span data-i18n="nav.history"></span>
+    </a>
+    <a href="#insights" data-view="insights">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-5"/></svg>
+      <span data-i18n="nav.insights"></span>
+    </a>
+    <a href="#more" data-view="more">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.6" class="fill"/><circle cx="12" cy="12" r="1.6" class="fill"/><circle cx="18" cy="12" r="1.6" class="fill"/></svg>
+      <span data-i18n="nav.more"></span>
+    </a>
+  </nav>
+  <dialog id="sheet"></dialog>
+  <div id="tip" role="tooltip" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

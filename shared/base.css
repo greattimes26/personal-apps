@@ -58,13 +58,16 @@ button {
   border-radius: 8px;
   padding: 6px 12px;
 }
-button:hover { background: var(--surface-2); }
 button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
-button.primary:hover { filter: brightness(1.06); }
 button.ghost { background: transparent; border-color: transparent; }
-button.ghost:hover { background: var(--surface-2); }
 button.danger { color: var(--danger); }
+/* Hover only where there is a real pointer; on iPhone it would stick after a tap. */
+@media (hover: hover) {
+  button:hover { background: var(--surface-2); }
+  button.primary:hover { filter: brightness(1.06); }
+  button.ghost:hover { background: var(--surface-2); }
+}
 
 input, select, textarea {
   background: var(--surface);

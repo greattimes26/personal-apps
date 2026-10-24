@@ -40,6 +40,20 @@ function time(iso) {
 }
 
 /**
+ * Ask the browser not to clear this origin's storage automatically.
+ * Returns true (protected), false (browser declined), or null (not supported).
+ */
+export async function requestPersistence() {
+  if (!navigator.storage || !navigator.storage.persist) return null;
+  try {
+    if (await navigator.storage.persisted()) return true;
+    return await navigator.storage.persist();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {object} opts
  * @param {string} opts.app            app name; namespaces the database and backup file
  * @param {number} opts.schemaVersion  current item schema version
@@ -226,5 +240,5 @@ export function createStore({ app, schemaVersion, migrate = (items) => items, va
     return summary;
   }
 
-  return { app, schemaVersion, all, get, put, putMany, remove, removeMany, getMeta, setMeta, exportBackup, importBackup };
+  return { app, schemaVersion, all, get, put, putMany, remove, removeMany, getMeta, setMeta, exportBackup, importBackup, requestPersistence };
 }

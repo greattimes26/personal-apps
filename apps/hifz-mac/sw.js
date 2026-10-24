@@ -1,5 +1,5 @@
 // Bump CACHE on every release so updates load.
-const CACHE = 'hifz-mac-v2';
+const CACHE = 'hifz-mac-v3';
 const FILES = [
   './', 'index.html', 'app.js', 'model.js', 'i18n.js', 'styles.css', 'manifest.json',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',

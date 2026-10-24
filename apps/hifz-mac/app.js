@@ -1,5 +1,5 @@
 // Hifz — Mac UI. Data/logic lives in model.js and /shared/; text and dates in i18n.js.
-import { createStore } from '../../shared/store.js';
+import { createStore, requestPersistence } from '../../shared/store.js';
 import { SURAHS, JUZ, TOTAL_AYAHS, surah, ayahCount, toIndex, fromIndex, rangeIdx, matchSurahs, isValidPos, normalizeName } from '../../shared/quran.js';
 import * as M from './model.js';
 import {
@@ -21,6 +21,7 @@ const S = {
   hist: freshHist(),
   mapMode: 'surah',
   lastImport: null,
+  persisted: undefined, // true | false | null (unsupported)
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -848,6 +849,7 @@ function renderInsights() {
 const BACKUP_FILE = `<code dir="ltr">${M.APP}-backup.json</code>`;
 
 async function doExport() {
+  S.persisted = await requestPersistence();
   const r = await store.exportBackup({ preferShare: false });
   if (r.cancelled) return;
   toast(t('exportedN', { n: count(r.count, 'record'), file: `${M.APP}-backup.json` }));
@@ -868,6 +870,7 @@ async function renderBackup() {
         <p class="muted">${t('lastExportedB')} <b>${lastExp ? `${weekdayName(M.dateStr(new Date(lastExp)))}${isAr() ? '، ' : ', '}${fmtDateTime(lastExp)}` : t('never')}</b></p>
         <button class="primary" data-export>${t('exportBackup')}</button>
         <p class="hint">${t('exportTip')}</p>
+        <p class="storage-status ${S.persisted ? 'ok' : ''}">${S.persisted ? '✓' : 'ⓘ'} ${t(S.persisted ? 'storageOk' : S.persisted === false ? 'storageNo' : 'storageUnknown')}</p>
       </section>
       <section class="panel">
         <header><h2>${t('importTitle')}</h2></header>
@@ -999,5 +1002,6 @@ if ('serviceWorker' in navigator) {
 }
 
 applyDocLang();
+requestPersistence().then((p) => { S.persisted = p; if (S.view === 'backup') render(); });
 S.view = ['day', 'plan', 'history', 'insights', 'backup'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'day';
 reload();

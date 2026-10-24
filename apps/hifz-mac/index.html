@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Hifz</title>
+  <meta name="description" content="Plan, track and review Quran memorization.">
+  <meta name="theme-color" content="#1f6f5c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Hifz">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">ح</div>
+        <div>
+          <div class="brand-name">Hifz</div>
+          <div class="brand-sub ar">حفظ القرآن</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav">
+        <a href="#day" data-view="day"><span class="ico" aria-hidden="true">◉</span>Day<span class="nav-badge" id="badge-today"></span></a>
+        <a href="#plan" data-view="plan"><span class="ico" aria-hidden="true">▦</span>Plan</a>
+        <a href="#history" data-view="history"><span class="ico" aria-hidden="true">☰</span>History</a>
+        <a href="#insights" data-view="insights"><span class="ico" aria-hidden="true">◔</span>Insights</a>
+        <a href="#backup" data-view="backup"><span class="ico" aria-hidden="true">⇅</span>Backup</a>
+      </nav>
+      <div class="side-foot">
+        <div class="last-export" id="last-export">Last exported: never</div>
+        <button id="btn-export-side">Export backup</button>
+        <div class="keys muted">← → days · T today · N new · / search</div>
+      </div>
+    </aside>
+    <main id="view" tabindex="-1"></main>
+  </div>
+  <dialog id="dlg"></dialog>
+  <div id="tip" role="tooltip" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

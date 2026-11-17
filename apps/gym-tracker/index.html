@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Gym Tracker</title>
+  <meta name="theme-color" content="#0f141b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gym">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="stylesheet" href="../../shared/base.css">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="anim.css">
+</head>
+<body>
+  <main id="main" aria-live="polite"></main>
+
+  <div id="rest" class="rest hidden" role="status">
+    <div class="rest-label">Rest</div>
+    <div class="rest-time" id="restTime">1:30</div>
+    <button class="btn small ghost" data-action="rest-add">+15s</button>
+    <button class="btn small" data-action="rest-skip">Skip</button>
+  </div>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="today" class="active"><span class="ti">🏋️</span>Today</button>
+    <button data-tab="progress"><span class="ti">📈</span>Progress</button>
+    <button data-tab="checkin"><span class="ti">📏</span>Check-in</button>
+    <button data-tab="more"><span class="ti">⋯</span>More</button>
+  </nav>
+
+  <div id="sheet" class="sheet hidden" aria-modal="true" role="dialog">
+    <div class="sheet-backdrop" data-action="sheet-close"></div>
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <div>
+          <div class="sheet-title" id="sheetTitle"></div>
+          <div class="muted" id="sheetSub"></div>
+        </div>
+        <button class="icon-btn" data-action="sheet-close" aria-label="Close">✕</button>
+      </div>
+      <div class="anim-box"><svg class="anim" id="sheetAnim" viewBox="0 0 240 170"></svg></div>
+      <ul class="tips" id="sheetTips"></ul>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="plan.js"></script>
+  <script src="anim.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

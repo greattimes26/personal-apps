@@ -1,0 +1,31 @@
+/* Exercise animation styles */
+.anim { width: 100%; height: auto; display: block; }
+.anim polyline, .anim line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.a-ground { stroke: #2b3442; stroke-width: 2; }
+.a-frame { stroke: #475163; stroke-width: 4; }
+.a-pad { stroke: #5d6a7e; stroke-width: 9; }
+.a-padfill { fill: #3a4454; }
+.a-move { stroke: #f59e0b; stroke-width: 4; }
+.a-movepad { stroke: #f59e0b; stroke-width: 9; opacity: .85; }
+.a-cable { stroke: #9aa6b8; stroke-width: 1.4; }
+.a-pulley { fill: #9aa6b8; }
+.a-plate { fill: #2f3846; stroke: #1b212b; stroke-width: .6; }
+.a-plate-on { fill: #f59e0b; stroke: #b45309; stroke-width: .6; }
+.a-body { stroke: #eef1f5; stroke-width: 7; }
+.a-torso { stroke-width: 12; }
+.a-torsofill { fill: #eef1f5; }
+.a-far { stroke: #8792a5; stroke-width: 6; }
+.a-head { fill: #eef1f5; }
+.a-grip { stroke: #f59e0b; stroke-width: 5; }
+.a-bar { stroke: #cbd5e1; stroke-width: 4; }
+.a-rope { stroke: #f59e0b; stroke-width: 3; }
+.a-db { fill: #475569; stroke: #1e293b; stroke-width: 1; }
+.a-db-in { fill: #94a3b8; }
+.a-dbbar { stroke: #94a3b8; stroke-width: 3; }
+.a-roller { fill: #f59e0b; }
+.a-step { fill: #3a4454; }
+.a-mat { fill: #1f6f63; }
+.a-guide { stroke: #34d399; stroke-width: 1.5; stroke-dasharray: 4 4; }
+.a-belt { stroke: #3a4454; stroke-width: 7; }
+.a-wheel { fill: none; stroke: #475163; stroke-width: 4; }
+.a-crank { stroke: #f59e0b; stroke-width: 3; }

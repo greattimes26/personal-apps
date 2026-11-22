@@ -521,6 +521,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     const el = $('#rest');
     el.classList.remove('hidden', 'go');
     clearInterval(ui.restInt);
+    clearTimeout(ui.restHide); // a "Go!" from the previous rest must not hide this new timer
     const tick = () => {
       const left = Math.ceil((ui.restEnd - Date.now()) / 1000);
       if (left <= 0) {
@@ -650,10 +651,13 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       case 'info': openSheet(a.dataset.ex); break;
       case 'sheet-close': closeSheet(); break;
       case 'rest-skip': stopRest(); break;
-      case 'rest-add':
+      case 'rest-add': {
+        const left = (ui.restEnd - Date.now()) / 1000;
+        if (left <= 0) { startRest(15); break; } // rest already over: start a fresh 15 s
         ui.restEnd += 15000;
-        scheduleBeep(Math.max(0, (ui.restEnd - Date.now()) / 1000));
+        scheduleBeep(left + 15);
         break;
+      }
       case 'finish': {
         const log = getLog(today(), currentSessionId(), false);
         if (!log) return;

@@ -6,7 +6,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   const SCHEMA_VERSION = 1;
   const PLAN_ID = 'plan'; // single plan item, fixed id so it merges across devices
   const ITEM_TYPES = ['plan', 'log', 'checkin'];
-  const store = createStore({ app: APP, schemaVersion: SCHEMA_VERSION, validate: i => ITEM_TYPES.includes(i.type) });
+  const store = createStore({ app: APP, schemaVersion: SCHEMA_VERSION, validate: i => validItem(i) });
   const DEFAULT_SETTINGS = { restOn: true, rest: 90, sound: true };
   const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -19,11 +19,24 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   const ymd = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
   const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
   const today = () => ymd(new Date());
-  const fmt = s => { const d = parse(s); return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MON[d.getMonth()]}`; };
+  const isYmd = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parse(s));
+  const fmt = s => { if (!isYmd(s)) return esc(s); const d = parse(s); return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MON[d.getMonth()]}`; };
   const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
   const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
   const num = v => (v === '' || v == null || isNaN(Number(v)) ? null : Number(v));
   const trimNum = n => (Math.round(n * 10) / 10).toString();
+  const isInt = (v, min, max) => Number.isInteger(v) && v >= min && v <= max;
+  // "3 × 10–12" for a plan item. Numbers are checked on import, and escaped here as well.
+  const repsText = it => esc(it.reps[0] === it.reps[1] ? it.reps[0] : `${it.reps[0]}–${it.reps[1]}`);
+
+  // Shape check for every item that comes in through a backup file.
+  function validItem(i) {
+    if (!i || !ITEM_TYPES.includes(i.type)) return false;
+    if (i.type === 'plan') return !!i.plan && validatePlan(i.plan).length === 0;
+    if (!isYmd(i.date)) return false;
+    if (i.type === 'log') return typeof i.session === 'string' && !!i.sets && typeof i.sets === 'object' && (!i.cardio || typeof i.cardio === 'object');
+    return true; // checkin: numbers are only ever shown through trimNum / esc
+  }
 
   // ---------- state ----------
   // In memory for fast rendering; every change is written through to IndexedDB.
@@ -33,7 +46,8 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   async function loadState() {
     const items = await store.all();
     const planItem = items.find(i => i.type === 'plan');
-    state.plan = planItem && planItem.plan ? planItem.plan : clone(window.DEFAULT_PLAN);
+    state.plan = planItem && planItem.plan && validatePlan(planItem.plan).length === 0 ? planItem.plan : clone(window.DEFAULT_PLAN);
+    if (planItem && state.plan !== planItem.plan) setTimeout(() => toast('Your saved plan has a problem, showing the default plan. Import your plan file again.', 6000), 500);
     state.logs = {};
     items.filter(i => i.type === 'log').forEach(l => { state.logs[l.id] = l; });
     state.checkins = items.filter(i => i.type === 'checkin');
@@ -112,7 +126,16 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     stopAnim();
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === ui.tab));
     const views = { today: renderToday, progress: renderProgress, checkin: renderCheckin, more: renderMore };
-    $('#main').innerHTML = views[ui.tab]();
+    try {
+      $('#main').innerHTML = views[ui.tab]();
+    } catch (err) {
+      console.error(err);
+      $('#main').innerHTML = `<h1>Something went wrong</h1><div class="card">
+        <p>This screen couldn't be shown. Your data is still saved on this phone.</p>
+        <p class="muted small">${esc(err && err.message)}</p>
+        <p class="muted">Try another tab, or import a backup or plan file to repair it.</p>
+        <button class="btn ghost" data-action="import">⬆ Import file</button><input type="file" id="importFile" accept=".json,application/json" class="hidden"></div>`;
+    }
   }
 
   function countdownChip() {
@@ -196,13 +219,13 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     const up = kind === 'weight' && readyToIncrease(item, last);
     const topTime = kind === 'time' && readyToIncrease(item, last);
     const unit = kind === 'time' ? 'sec' : 'reps';
-    const target = `${item.sets} × ${item.reps[0] === item.reps[1] ? item.reps[0] : item.reps[0] + '–' + item.reps[1]}${kind === 'time' ? ' sec' : ''}`;
+    const target = `${esc(item.sets)} × ${repsText(item)}${kind === 'time' ? ' sec' : ''}`;
     let lastTxt = '';
     if (last) {
       const parts = last.sets.map(s => kind === 'time' ? `${esc(s.r)}s` : `${s.w != null && s.w !== '' ? esc(s.w) + ' kg × ' : ''}${esc(s.r)}`);
       lastTxt = `<div class="ex-last">Last time (${fmt(last.date)}): <b>${parts.join(' · ')}</b></div>`;
     } else {
-      lastTxt = `<div class="ex-last">First time: pick a weight you can do ${item.reps[0]}–${item.reps[1]} times with good form.</div>`;
+      lastTxt = `<div class="ex-last">First time: pick a weight you can do ${esc(item.reps[0])}–${esc(item.reps[1])} times with good form.</div>`;
     }
     const cur = (log && log.sets[item.ex]) || [];
     let rows = '';
@@ -368,7 +391,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     const dayOf = sid => Object.keys(plan().schedule).filter(k => plan().schedule[k] === sid).map(k => DAYS[+k]).join(', ');
     plan().sessions.forEach(s => {
       h += `<div style="margin-top:12px"><b>${esc(s.name)}</b> <span class="muted small">${esc(dayOf(s.id))}</span><ul class="tips muted small">` +
-        s.items.map(it => `<li>${esc(exInfo(it.ex).name)} — ${kindOf(it) === 'cardio' ? esc(it.minutes) + ' min' : `${it.sets} × ${it.reps[0] === it.reps[1] ? it.reps[0] : it.reps[0] + '–' + it.reps[1]}${kindOf(it) === 'time' ? ' sec' : ''}`}</li>`).join('') + `</ul></div>`;
+        s.items.map(it => `<li>${esc(exInfo(it.ex).name)} — ${kindOf(it) === 'cardio' ? esc(it.minutes) + ' min' : `${esc(it.sets)} × ${repsText(it)}${kindOf(it) === 'time' ? ' sec' : ''}`}</li>`).join('') + `</ul></div>`;
     });
     h += `</div>`;
     h += `<h2>Install on iPhone</h2><div class="card muted">In Safari: tap <b style="color:var(--text)">Share</b> → <b style="color:var(--text)">Add to Home Screen</b>. It then opens like an app and works offline at the gym.</div>`;
@@ -601,13 +624,20 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     p.sessions.forEach(s => {
       if (!s.id || ids.has(s.id)) errs.push(`Session id missing or repeated: ${s.id}`);
       ids.add(s.id);
-      (s.items || []).forEach(it => {
-        if (!p.exercises[it.ex]) errs.push(`Unknown exercise "${it.ex}" in ${s.name}.`);
+      if (!Array.isArray(s.items) || !s.items.length) { errs.push(`Session ${s.id} has no exercises.`); return; }
+      s.items.forEach(it => {
+        if (!it || !p.exercises[it.ex]) { errs.push(`Unknown exercise "${it && it.ex}" in ${s.name}.`); return; }
         const k = it.kind || 'weight';
-        if (k !== 'cardio' && !(it.sets > 0 && Array.isArray(it.reps) && it.reps.length === 2)) errs.push(`"${it.ex}" in ${s.name} needs sets and reps [min, max].`);
+        if (!['weight', 'time', 'cardio'].includes(k)) errs.push(`"${it.ex}" in ${s.name} has an unknown kind "${k}".`);
+        if (k !== 'cardio' && !(isInt(it.sets, 1, 20) && Array.isArray(it.reps) && it.reps.length === 2 &&
+          isInt(it.reps[0], 1, 600) && isInt(it.reps[1], it.reps[0], 600))) errs.push(`"${it.ex}" in ${s.name} needs whole-number sets (1–20) and reps [min, max].`);
       });
     });
-    Object.values(p.schedule).forEach(v => { if (!ids.has(v)) errs.push(`Schedule points to unknown session "${v}".`); });
+    Object.entries(p.schedule).forEach(([k, v]) => {
+      if (!/^[0-6]$/.test(k)) errs.push(`Schedule day "${k}" must be 0–6.`);
+      if (!ids.has(v)) errs.push(`Schedule points to unknown session "${v}".`);
+    });
+    Object.values(p.exercises).forEach(e => { if (!e || typeof e !== 'object') errs.push('Every exercise needs details.'); });
     return errs;
   }
 

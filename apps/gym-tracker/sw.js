@@ -1,5 +1,5 @@
 // Bump CACHE on every release so updates load.
-const CACHE = 'gym-tracker-v3';
+const CACHE = 'gym-tracker-v4';
 const FILES = [
   './', 'index.html', 'app.js', 'plan.js', 'anim.js', 'anim.css', 'styles.css', 'manifest.json',
   'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',

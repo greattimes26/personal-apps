@@ -60,7 +60,9 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   }
   function saveSettings() { store.setMeta('settings', state.settings).catch(() => {}); }
 
-  const ui = { tab: 'today', picked: {}, stopAnim: null, rest: null };
+  const ui = { tab: 'today', picked: {}, stopAnim: null };
+  // Rest timer state, all in one place: end time, the 250 ms ticker, the auto-hide after "Go!", scheduled beep.
+  const rest = { end: 0, ticker: null, hideTimer: null, beep: null };
 
   // ---------- plan helpers ----------
   const plan = () => state.plan;
@@ -485,8 +487,10 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       let r = rIn.value.trim();
       if (r === '' && /^\d+(\.\d+)?$/.test(rIn.placeholder)) r = rIn.placeholder; // same as last time
       if (r === '' || num(r) == null) { rIn.focus(); toast(kind === 'time' ? 'Enter the seconds you held' : 'Enter how many reps you did'); return; }
+      const w = wIn ? wIn.value.trim().replace(',', '.') : '';
+      if (w !== '' && !(num(w) != null && num(w) >= 0 && num(w) <= 500)) { wIn.focus(); toast('Enter the weight in kg, e.g. 42.5'); return; }
       cur.r = r;
-      if (wIn) cur.w = wIn.value.trim();
+      if (wIn) cur.w = w;
       cur.done = true;
       startRest();
     }
@@ -532,38 +536,42 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       o.start(t0 + d); o.stop(t0 + d + 0.2);
       return o;
     });
-    ui.beep = oscs;
+    rest.beep = oscs;
   }
-  function cancelBeep() { (ui.beep || []).forEach(o => { try { o.stop(); } catch (e) { /* already stopped */ } }); ui.beep = null; }
+  function cancelBeep() { (rest.beep || []).forEach(o => { try { o.stop(); } catch (e) { /* already stopped */ } }); rest.beep = null; }
 
+  function clearRestTimers() {
+    clearInterval(rest.ticker);
+    clearTimeout(rest.hideTimer); // a "Go!" from the previous rest must never hide a new timer
+    rest.ticker = rest.hideTimer = null;
+  }
   function startRest(sec) {
     if (!state.settings.restOn) return;
     sec = sec || state.settings.rest || 90;
-    ui.restEnd = Date.now() + sec * 1000;
+    clearRestTimers();
+    rest.end = Date.now() + sec * 1000;
     scheduleBeep(sec);
-    const el = $('#rest');
-    el.classList.remove('hidden', 'go');
-    clearInterval(ui.restInt);
-    clearTimeout(ui.restHide); // a "Go!" from the previous rest must not hide this new timer
-    const tick = () => {
-      const left = Math.ceil((ui.restEnd - Date.now()) / 1000);
-      if (left <= 0) {
-        clearInterval(ui.restInt);
-        el.classList.add('go');
-        $('#restTime').textContent = 'Go! Next set 💪';
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-        clearTimeout(ui.restHide);
-        ui.restHide = setTimeout(stopRest, 5000);
-        return;
-      }
-      $('#restTime').textContent = `${Math.floor(left / 60)}:${p2(left % 60)}`;
-    };
-    tick();
-    ui.restInt = setInterval(tick, 250);
+    $('#rest').classList.remove('hidden', 'go');
+    tickRest();
+    rest.ticker = setInterval(tickRest, 250);
+  }
+  function tickRest() {
+    const left = Math.ceil((rest.end - Date.now()) / 1000);
+    if (left > 0) { $('#restTime').textContent = `${Math.floor(left / 60)}:${p2(left % 60)}`; return; }
+    clearRestTimers();
+    $('#rest').classList.add('go');
+    $('#restTime').textContent = 'Go! Next set 💪';
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    rest.hideTimer = setTimeout(stopRest, 5000);
+  }
+  function addRest(sec) {
+    const left = (rest.end - Date.now()) / 1000;
+    if (left <= 0) return startRest(sec); // rest already over: start a fresh one
+    rest.end += sec * 1000;
+    scheduleBeep(left + sec);
   }
   function stopRest() {
-    clearInterval(ui.restInt);
-    clearTimeout(ui.restHide);
+    clearRestTimers();
     cancelBeep();
     $('#rest').classList.add('hidden');
   }
@@ -681,13 +689,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       case 'info': openSheet(a.dataset.ex); break;
       case 'sheet-close': closeSheet(); break;
       case 'rest-skip': stopRest(); break;
-      case 'rest-add': {
-        const left = (ui.restEnd - Date.now()) / 1000;
-        if (left <= 0) { startRest(15); break; } // rest already over: start a fresh 15 s
-        ui.restEnd += 15000;
-        scheduleBeep(left + 15);
-        break;
-      }
+      case 'rest-add': addRest(15); break;
       case 'finish': {
         const log = getLog(today(), currentSessionId(), false);
         if (!log) return;
@@ -748,6 +750,8 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   }
 
   loadState().catch(() => toast('Could not open storage.')).then(render);
+  // Ask the browser to keep this app's data permanently (the phone is the only copy between exports).
+  requestPersistence().catch(() => {});
 
   // Exposed for testing in the browser console.
   window.GymTracker = { state: () => state, summaryText, ready: () => loadState() };

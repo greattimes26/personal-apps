@@ -2,7 +2,7 @@
    More → Import plan (a JSON file with the same shape and "type": "gym-tracker-plan"). */
 window.DEFAULT_PLAN = {
   type: 'gym-tracker-plan',
-  version: 1,
+  version: 2,
   name: '5-week plan to 24 Dec',
   startDate: '2026-11-18',
   goalDate: '2026-12-24',
@@ -38,9 +38,9 @@ window.DEFAULT_PLAN = {
     seatedRow: { name: 'Seated row', machine: 'Seated row machine', anim: 'seatedRow',
       tips: ['Chest up, back straight.', 'Pull to your lower ribs and squeeze your shoulder blades together.', 'Don\'t rock your body back and forth.'] },
     legPress: { name: 'Leg press', machine: 'Leg press machine', anim: 'legPress',
-      tips: ['Feet shoulder-width, in the middle of the platform.', 'Lower until your knees are around 90°.', 'Don\'t lock your knees at the top.'] },
+      tips: ['Feet shoulder-width, a bit high on the platform: easier on the knees.', 'Keep it shallow: stop well before your knees come close to your chest.', 'Lower slowly; don\'t lock your knees at the top.'] },
     legExtension: { name: 'Leg extension', machine: 'Leg extension machine', anim: 'legExtension',
-      tips: ['Line your knee up with the machine\'s pivot.', 'Pad sits on the lower shin.', 'Pause 1 second at the top, lower slowly.'] },
+      tips: ['Partial range: lower only about halfway, then straighten. This protects the knee tendons.', 'Line your knee up with the machine\'s pivot; pad on the lower shin.', 'Pause 1 second at the top, lower slowly. Stop if the knee complains.'] },
     legCurl: { name: 'Lying leg curl', machine: 'Lying leg curl machine', anim: 'legCurl',
       tips: ['Keep your hips pressed into the pad.', 'Curl your heels toward your glutes.', 'Lower slowly; don\'t let the weight drop.'] },
     calfRaise: { name: 'Standing calf raise', machine: 'Standing calf raise machine', anim: 'calfRaise',
@@ -50,11 +50,19 @@ window.DEFAULT_PLAN = {
     plank: { name: 'Plank', machine: 'Floor / mat', anim: 'plank',
       tips: ['Elbows under your shoulders.', 'One straight line from head to heels.', 'Squeeze glutes and abs, and keep breathing.'] },
     cableCurl: { name: 'Cable curl', machine: 'Cable machine — bar, low pulley', anim: 'cableCurl',
-      tips: ['Elbows pinned to your sides.', 'Squeeze the biceps at the top.', 'Go straight into the pushdown with no rest.'] },
+      tips: ['Small straight bar on the low pulley.', 'Elbows pinned to your sides; squeeze the biceps at the top.', 'Tip: on a dual cable station, bar on one side low and rope on the other side high, so you keep both.'] },
     pushdownFin: { name: 'Rope pushdown', machine: 'Cable machine — rope, high pulley', anim: 'ropePushdown',
       tips: ['Elbows stay at your sides.', 'Spread the rope at the bottom.', 'Rest 60–90 seconds after this, then start the next round.'] },
     inclineWalk: { name: 'Incline walk', machine: 'Treadmill', anim: 'inclineWalk',
-      tips: ['Incline about 8–12%, brisk pace.', 'Don\'t hold the rails.', 'This is your main belly-fat burner of the week.'] }
+      tips: ['About 8% incline at 5 km/h; raise the incline only when it feels clearly easier.', 'Breathing hard but able to talk. If you fade, drop 1–2% for the last minutes rather than stopping.', 'Don\'t hold the rails.'] },
+    hipAbduction: { name: 'Hip abduction', machine: 'Hip abduction machine', anim: 'hipAbduction',
+      tips: ['Sit tall, pads on the outside of your knees.', 'Push your knees outward, pause 1 second, return slowly.', 'Strengthens the side glutes, which keep the knee tracking straight.'] },
+    gluteBridge: { name: 'Glute bridge', machine: 'Floor / mat (add a plate on your hips when easy)', anim: 'gluteBridge',
+      tips: ['Lie on your back, knees bent, feet flat.', 'Squeeze your glutes and lift until shoulders, hips and knees are in a line. Hold 2 seconds.', 'Almost no load on the knee joint. Log the plate weight, or leave kg empty.'] },
+    backExtension: { name: 'Back extension', machine: 'Back extension bench (45°)', anim: 'backExtension',
+      tips: ['Hips on the pad, feet locked in.', 'Lower your upper body slowly, then rise until it\'s in line with your legs. Don\'t arch past straight.', 'Bodyweight only to start; leave kg empty. Swap for bird-dogs if your back complains.'] },
+    rearDelt: { name: 'Rear delt fly', machine: 'Fly / rear delt machine (mode B)', anim: 'rearDelt',
+      tips: ['Sit facing the pad, chest against it.', 'Push the handles outward and back with slightly bent arms; squeeze between your shoulder blades.', 'Light weight. Balances all the chest pressing for better posture.'] }
   },
 
   sessions: [
@@ -63,6 +71,7 @@ window.DEFAULT_PLAN = {
       { ex: 'chestPress', sets: 3, reps: [8, 12] },
       { ex: 'inclinePress', sets: 3, reps: [10, 12] },
       { ex: 'pecDeck', sets: 2, reps: [12, 15] },
+      { ex: 'rearDelt', sets: 2, reps: [12, 15] },
       { ex: 'latPulldown', sets: 3, reps: [10, 12] },
       { ex: 'dbCurl', sets: 3, reps: [10, 12] },
       { ex: 'ropePushdown', sets: 3, reps: [10, 12] }
@@ -72,9 +81,12 @@ window.DEFAULT_PLAN = {
       { ex: 'legPress', sets: 3, reps: [12, 15] },
       { ex: 'legExtension', sets: 2, reps: [12, 15] },
       { ex: 'legCurl', sets: 2, reps: [12, 15] },
+      { ex: 'hipAbduction', sets: 2, reps: [15, 20] },
+      { ex: 'gluteBridge', sets: 2, reps: [12, 15] },
       { ex: 'calfRaise', sets: 2, reps: [15, 15] },
       { ex: 'machineCrunch', sets: 3, reps: [12, 15] },
       { ex: 'plank', kind: 'time', sets: 3, reps: [30, 45] },
+      { ex: 'backExtension', sets: 2, reps: [12, 15] },
       { ex: 'inclineWalk', kind: 'cardio', minutes: '15–20' }
     ] },
     { id: 'upperB', name: 'Upper B', focus: 'Arms first, then chest', items: [
@@ -92,11 +104,14 @@ window.DEFAULT_PLAN = {
       { ex: 'legPress', sets: 3, reps: [12, 15] },
       { ex: 'legExtension', sets: 2, reps: [12, 15] },
       { ex: 'legCurl', sets: 2, reps: [12, 15] },
+      { ex: 'hipAbduction', sets: 2, reps: [15, 20] },
+      { ex: 'gluteBridge', sets: 2, reps: [12, 15] },
       { ex: 'calfRaise', sets: 2, reps: [15, 15] },
       { ex: 'machineCrunch', sets: 3, reps: [12, 15] },
       { ex: 'plank', kind: 'time', sets: 3, reps: [30, 45] },
-      { ex: 'cableCurl', sets: 3, reps: [12, 15], group: 'Arm finisher: do these two back to back, 3 rounds' },
-      { ex: 'pushdownFin', sets: 3, reps: [12, 15], group: 'Arm finisher: do these two back to back, 3 rounds' },
+      { ex: 'backExtension', sets: 2, reps: [12, 15] },
+      { ex: 'cableCurl', sets: 3, reps: [12, 15], group: 'Arm finisher: back to back if you can keep both stations, otherwise one after the other' },
+      { ex: 'pushdownFin', sets: 3, reps: [12, 15], group: 'Arm finisher: back to back if you can keep both stations, otherwise one after the other' },
       { ex: 'inclineWalk', kind: 'cardio', minutes: '15–20' }
     ] }
   ]

@@ -455,6 +455,78 @@
     };
   };
 
+  // Front-view helpers for seated machines seen from the front or back.
+  function seatedFront(cx, sy, hy, legs) {
+    let s = '';
+    s += `<rect class="a-padfill" x="${cx - 26}" y="${hy + 2}" width="52" height="9" rx="4"/>`;
+    s += frame([cx, hy + 11], [cx, G]) + frame([cx - 22, G], [cx + 22, G]);
+    s += legs;
+    s += `<rect class="a-torsofill" x="${cx - 12}" y="${sy - 2}" width="24" height="${hy - sy + 4}" rx="9"/>`;
+    s += line([[cx - 17, sy], [cx + 17, sy]], 'a-body');
+    s += dot([cx, sy - 17], 9, 'a-head');
+    return s;
+  }
+
+  EX.hipAbduction = t => {
+    const cx = 120, sy = 64, hy = 116;
+    let legs = '', pads = '';
+    for (const sd of [-1, 1]) {
+      const knee = [cx + sd * (13 + 24 * t), hy + 13];
+      const ankle = [cx + sd * (14 + 16 * t), G - 3];
+      legs += line([[cx + sd * 8, hy], knee, ankle, [ankle[0] + sd * 5, G - 2]], 'a-body');
+      const p = [knee[0] + sd * 7, knee[1]];
+      pads += line([[p[0], p[1] - 9], [p[0], p[1] + 9]], 'a-movepad') + mv([p[0], p[1] + 9], [cx + sd * 6, hy + 24]);
+    }
+    let s = `<rect class="a-padfill" x="${cx - 19}" y="${sy - 14}" width="38" height="${hy - sy + 12}" rx="7"/>`;
+    s += seatedFront(cx, sy, hy, legs) + pads;
+    for (const sd of [-1, 1]) {
+      const sho = [cx + sd * 17, sy];
+      const h = [cx + sd * 30, hy + 2];
+      s += line([sho, [cx + sd * 27, sy + 26], h], 'a-body') + line([[h[0], h[1] - 4], [h[0], h[1] + 6]], 'a-grip');
+    }
+    return { raw: s };
+  };
+
+  EX.rearDelt = t => {
+    const cx = 120, sy = 64, hy = 116;
+    const phi = lp(84, 4, t) * R;
+    let legs = '';
+    for (const sd of [-1, 1]) legs += line([[cx + sd * 8, hy], [cx + sd * 13, hy + 14], [cx + sd * 14, G - 3], [cx + sd * 19, G - 2]], 'a-body');
+    let s = frame([52, G], [52, 12], [188, 12], [188, G]);
+    s += `<rect class="a-padfill" x="${cx - 15}" y="${sy - 4}" width="30" height="${hy - sy - 6}" rx="7"/>`;
+    s += seatedFront(cx, sy, hy, legs);
+    for (const sd of [-1, 1]) {
+      const sho = [cx + sd * 17, sy];
+      const h = [sho[0] + sd * 52 * Math.cos(phi), sy + 2];
+      s += mv([h[0], sy - 6], [cx + sd * 30, 12]);
+      s += line([sho, h], 'a-body') + line([[h[0], h[1] - 7], [h[0], h[1] + 7]], 'a-grip');
+    }
+    return { raw: s };
+  };
+
+  EX.gluteBridge = t => {
+    const A0 = [166, 152];
+    const H = [118, lp(150, 124, t)];
+    const target = [70, 151];
+    const tang = Math.atan2(target[1] - H[1], target[0] - H[0]) / R;
+    return {
+      pose: { hip: H, torso: tang, head: tang + 8, arm: { ua: tang + 186, fa: tang + 182 }, leg: { a: S(A0, H), bend: -1, ft: 8 } },
+      back: `<rect class="a-mat" x="34" y="${G - 6}" width="170" height="6" rx="3"/>`
+    };
+  };
+
+  EX.backExtension = t => {
+    const ankle = [186, 148];
+    const hip = A(ankle, V(L.th + L.sh, -135));
+    const torso = lp(128, 225, t);
+    const off = V(9, 135);
+    return {
+      pose: { hip, torso, head: torso, arm: { ua: torso + 150, fa: torso - 30 }, leg: { th: 45, sh: 45, ft: -45 } },
+      back: pad(A(hip, off), A(A(hip, V(24, 45)), off)) + frame(A(A(hip, V(14, 45)), A(off, off)), [hip[0] + 6, G]) +
+        frame([hip[0] + 6, G], [ankle[0] + 10, G], A(ankle, [6, 10])) + dot(A(ankle, V(7, -45)), 5, 'a-roller')
+    };
+  };
+
   // ---------- render / play ----------
   function frameSvg(id, ph) {
     const fn = EX[id];

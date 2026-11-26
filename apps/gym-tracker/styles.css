@@ -129,3 +129,9 @@ details.hist pre { white-space: pre-wrap; font: 12.5px/1.5 ui-monospace, Menlo, 
 .tips li { margin: 6px 0; }
 
 .toast { position: fixed; left: 50%; transform: translateX(-50%); top: calc(var(--safe-t) + 12px); background: #232d3a; border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,.4); max-width: 90%; text-align: center; }
+
+/* Day navigation on the Today tab */
+.day-nav { display: flex; align-items: center; gap: 8px; }
+.day-nav h1 { margin: 6px 0 2px; min-width: 0; }
+.day-nav .icon-btn { font-size: 20px; line-height: 1; padding: 0; flex: 0 0 auto; }
+.day-nav .icon-btn:disabled { opacity: .3; }

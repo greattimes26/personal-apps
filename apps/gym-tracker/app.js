@@ -60,7 +60,10 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   }
   function saveSettings() { store.setMeta('settings', state.settings).catch(() => {}); }
 
-  const ui = { tab: 'today', picked: {}, stopAnim: null };
+  const ui = { tab: 'today', picked: {}, stopAnim: null, date: null };
+  // The day shown on the Today tab: today, or a recent past day being filled in afterwards.
+  const MAX_BACK_DAYS = 30;
+  const viewDate = () => ui.date || today();
   // Rest timer state, all in one place: end time, the 250 ms ticker, the auto-hide after "Go!", scheduled beep.
   const rest = { end: 0, ticker: null, hideTimer: null, beep: null };
 
@@ -72,7 +75,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   const kindOf = item => item.kind || 'weight';
 
   function currentSessionId() {
-    const t = today();
+    const t = viewDate();
     if (ui.picked[t]) return ui.picked[t];
     const started = Object.values(state.logs).filter(l => l.date === t).sort((a, b) => ((b.updatedAt || '') > (a.updatedAt || '') ? 1 : -1))[0];
     if (started && sessionById(started.session)) return started.session;
@@ -91,10 +94,11 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   function logHasWork(l) {
     return Object.values(l.sets || {}).some(a => (a || []).some(s => s && s.done)) || Object.values(l.cardio || {}).some(c => c && c.done);
   }
-  function lastPerf(exId, excludeId) {
+  function lastPerf(exId, excludeId, upTo) {
     let best = null;
     for (const l of Object.values(state.logs)) {
       if (l.id === excludeId) continue;
+      if (upTo && l.date > upTo) continue; // a past day compares against the days before it
       const sets = (l.sets[exId] || []).filter(s => s && s.done);
       if (!sets.length) continue;
       if (!best || l.date > best.date || (l.date === best.date && (l.updatedAt || '') > (best.updatedAt || ''))) best = { date: l.date, sets, updatedAt: l.updatedAt };
@@ -148,27 +152,37 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   }
 
   function renderToday() {
-    const t = today();
+    const t = viewDate();
+    const isToday = t === today();
     const sched = scheduledFor(t);
     const sid = currentSessionId();
-    let h = `<div class="row between wrap"><h1>${fmt(t)}</h1>${countdownChip()}</div>`;
+    const canBack = daysBetween(t, today()) < MAX_BACK_DAYS;
+    let h = `<div class="row between wrap"><div class="day-nav">
+        <button class="icon-btn" data-action="day-prev" aria-label="Previous day" ${canBack ? '' : 'disabled'}>‹</button>
+        <h1>${fmt(t)}</h1>
+        <button class="icon-btn" data-action="day-next" aria-label="Next day" ${isToday ? 'disabled' : ''}>›</button>
+      </div>${isToday ? countdownChip() : ''}</div>`;
+    if (!isToday) {
+      h += `<div class="banner"><b>Editing a past day</b><div class="muted">Changes are saved to ${fmt(t)}.</div>
+        <button class="btn small" style="margin-top:8px" data-action="day-today">Back to today</button></div>`;
+    }
 
     // Saturday check-in reminder
-    if (parse(t).getDay() === 6 && !state.checkins.some(c => daysBetween(c.date, t) < 6 && daysBetween(c.date, t) >= 0)) {
+    if (isToday && parse(t).getDay() === 6 && !state.checkins.some(c => daysBetween(c.date, t) < 6 && daysBetween(c.date, t) >= 0)) {
       h += `<div class="banner"><b>Saturday check-in</b><div class="muted">Measure your waist and take your progress photos before training.</div>
         <button class="btn small" style="margin-top:8px" data-tab="checkin">Do check-in</button></div>`;
     }
 
     h += `<div class="pills">` + plan().sessions.map(s =>
-      `<button class="pill ${s.id === sid ? 'active' : ''}" data-action="pick" data-sid="${esc(s.id)}">${esc(s.name)}${s.id === sched ? '<span class="dot" title="Scheduled today"></span>' : ''}</button>`).join('') + `</div>`;
+      `<button class="pill ${s.id === sid ? 'active' : ''}" data-action="pick" data-sid="${esc(s.id)}">${esc(s.name)}${s.id === sched ? '<span class="dot" title="Scheduled this day"></span>' : ''}</button>`).join('') + `</div>`;
 
     if (!sid) {
       let next = null;
       for (let i = 1; i <= 7; i++) { const d = addDays(t, i); const s = scheduledFor(d); if (s && sessionById(s)) { next = { d, s: sessionById(s) }; break; } }
       h += `<div class="card"><div style="font-size:20px;font-weight:800">Rest day 😌</div>
-        <p class="muted">Muscles grow while you recover. Aim for 8–10k steps today.</p>
+        <p class="muted">Muscles grow while you recover. Aim for 8–10k steps${isToday ? ' today' : ''}.</p>
         ${next ? `<p>Next: <b>${esc(next.s.name)}</b> on ${DAYS[parse(next.d).getDay()]}.</p>` : ''}
-        <p class="muted small">Want to train anyway? Tap a session above.</p></div>`;
+        <p class="muted small">${isToday ? 'Want to train anyway? Tap a session above.' : 'Trained this day? Tap the session above to log it.'}</p></div>`;
       return h;
     }
 
@@ -178,7 +192,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     const doneCount = items.filter(it => itemDone(it, log)).length;
     h += `<div class="row between" style="margin-top:6px"><div><div style="font-size:19px;font-weight:800">${esc(sess.name)}</div>
       <div class="muted">${esc(sess.focus || '')}</div></div><span class="chip ${doneCount === items.length ? 'good' : ''}">${doneCount}/${items.length} done</span></div>`;
-    if (sid !== sched && sched) h += `<div class="muted small" style="margin-top:4px">Today's scheduled session is ${esc(sessionById(sched) ? sessionById(sched).name : sched)}.</div>`;
+    if (sid !== sched && sched) h += `<div class="muted small" style="margin-top:4px">${isToday ? "Today's" : "This day's"} scheduled session is ${esc(sessionById(sched) ? sessionById(sched).name : sched)}.</div>`;
 
     let lastGroup = null;
     items.forEach(item => {
@@ -190,7 +204,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     if (log && log.finishedAt) {
       h += `<div class="banner good"><b>Workout saved 💪</b><div class="muted">Nice work. Don't forget the pool, jacuzzi and steam!</div></div>`;
     } else {
-      h += `<button class="btn block" style="margin-top:16px" data-action="finish" ${log && logHasWork(log) ? '' : 'disabled'}>Finish workout</button>`;
+      h += `<button class="btn block" style="margin-top:16px" data-action="finish" ${log && logHasWork(log) ? '' : 'disabled'}>${t === today() ? 'Finish workout' : 'Mark as finished'}</button>`;
     }
     return h;
   }
@@ -217,7 +231,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
         <button class="check ${c.done ? 'on' : ''}" data-action="cardio" aria-label="Mark done">✓</button></div></div>`;
     }
 
-    const last = lastPerf(item.ex, log ? log.id : null);
+    const last = lastPerf(item.ex, log ? log.id : null, date);
     const up = kind === 'weight' && readyToIncrease(item, last);
     const topTime = kind === 'time' && readyToIncrease(item, last);
     const unit = kind === 'time' ? 'sec' : 'reps';
@@ -463,7 +477,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     const { ex, kind, i } = rowContext(el);
     if (!ex) return;
     const sid = currentSessionId();
-    const log = getLog(today(), sid, true);
+    const log = getLog(viewDate(), sid, true);
     if (kind === 'cardio') {
       log.cardio[ex] = Object.assign({}, log.cardio[ex], { min: el.value.trim() });
     } else {
@@ -476,7 +490,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   function toggleSet(btn) {
     const { tr, ex, kind, i } = rowContext(btn);
     const sid = currentSessionId();
-    const log = getLog(today(), sid, true);
+    const log = getLog(viewDate(), sid, true);
     const arr = log.sets[ex] = log.sets[ex] || [];
     const cur = Object.assign({}, arr[i]);
     if (cur.done) {
@@ -492,7 +506,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       cur.r = r;
       if (wIn) cur.w = w;
       cur.done = true;
-      startRest();
+      if (viewDate() === today()) startRest(); // no rest timer when filling in a past day
     }
     arr[i] = cur;
     persist(log);
@@ -501,7 +515,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
 
   function toggleCardio(btn) {
     const { card, ex } = rowContext(btn);
-    const log = getLog(today(), currentSessionId(), true);
+    const log = getLog(viewDate(), currentSessionId(), true);
     const c = Object.assign({}, log.cardio[ex]);
     const minIn = card.querySelector('input[data-f="min"]');
     c.min = minIn.value.trim();
@@ -683,7 +697,10 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
     if (!a) return;
     const act = a.dataset.action;
     switch (act) {
-      case 'pick': ui.picked[today()] = a.dataset.sid; render(); break;
+      case 'pick': ui.picked[viewDate()] = a.dataset.sid; render(); break;
+      case 'day-prev': if (daysBetween(viewDate(), today()) < MAX_BACK_DAYS) { ui.date = addDays(viewDate(), -1); stopRest(); render(); window.scrollTo(0, 0); } break;
+      case 'day-next': { const n = addDays(viewDate(), 1); ui.date = n >= today() ? null : n; stopRest(); render(); window.scrollTo(0, 0); break; }
+      case 'day-today': ui.date = null; stopRest(); render(); window.scrollTo(0, 0); break;
       case 'toggle': unlockAudio(); toggleSet(a); break;
       case 'cardio': toggleCardio(a); break;
       case 'info': openSheet(a.dataset.ex); break;
@@ -691,7 +708,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
       case 'rest-skip': stopRest(); break;
       case 'rest-add': addRest(15); break;
       case 'finish': {
-        const log = getLog(today(), currentSessionId(), false);
+        const log = getLog(viewDate(), currentSessionId(), false);
         if (!log) return;
         log.finishedAt = Date.now();
         persist(log); stopRest(); render(); window.scrollTo(0, document.body.scrollHeight);
@@ -742,7 +759,7 @@ import { createStore, requestPersistence, uuid } from '../../shared/store.js';
   // Refresh "Today" when the app comes back to the foreground on a new day.
   let lastDay = today();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && today() !== lastDay) { lastDay = today(); render(); }
+    if (document.visibilityState === 'visible' && today() !== lastDay) { lastDay = today(); ui.date = null; render(); }
   });
 
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
